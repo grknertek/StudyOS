@@ -23,9 +23,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. GOOGLE SHEETS BAĞLANTISI (AKILLI BEKLEME MODÜLÜ) ---
+# --- 2. GOOGLE SHEETS BAĞLANTISI ---
 
-# Bağlantı nesnesini hafızada tut
 @st.cache_resource
 def get_google_sheet_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
@@ -34,7 +33,6 @@ def get_google_sheet_client():
     client = gspread.authorize(creds)
     return client
 
-# Sayfayı (Worksheet) güvenli bir şekilde al, hata verirse tekrar dene
 def get_safe_sheet():
     max_retries = 3
     for i in range(max_retries):
@@ -44,28 +42,41 @@ def get_safe_sheet():
             return sheet
         except Exception as e:
             if i < max_retries - 1:
-                time.sleep(2) # 2 saniye bekle ve tekrar dene
+                time.sleep(2)
                 continue
             else:
                 st.error(f"Google Bağlantı Hatası: {e}")
                 return None
 
-# Veriyi 10 saniye boyunca hafızada tut (Kotayı rahatlatır)
+# YENİ: Başlık Kontrolü Yapan Fonksiyon
+def initialize_headers(sheet):
+    try:
+        # Eğer sayfa tamamen boşsa başlıkları ekle
+        if not sheet.row_values(1):
+            headers = ["Username", "XP", "Level", "History", "Tasks", "Cards", "Last_Login"]
+            sheet.append_row(headers)
+            st.toast("Veritabanı başlıkları otomatik oluşturuldu! 🛠️")
+    except Exception as e:
+        st.warning(f"Başlık kontrolü uyarısı: {e}")
+
 @st.cache_data(ttl=10)
 def get_cached_records():
     sheet = get_safe_sheet()
     if sheet:
-        return sheet.get_all_records()
+        # Önce başlık kontrolü yap
+        initialize_headers(sheet)
+        try:
+            return sheet.get_all_records()
+        except gspread.exceptions.GSpreadException:
+            st.error("⚠️ Veritabanı tablosu bozuk. Lütfen Google Sheet'i temizleyin veya A1 satırına başlıkları (Username, XP...) yazın.")
+            return []
     return []
 
-# Kullanıcı verisini bul veya oluştur
 def get_user_data(username):
-    all_records = get_cached_records() # Ön bellekteki veriyi kullan
+    all_records = get_cached_records()
     
-    # Kullanıcıyı bul
     for row in all_records:
         if row['Username'] == username:
-            # Veri tiplerini onar
             try: row['History'] = json.loads(row['History'])
             except: row['History'] = []
             try: row['Tasks'] = json.loads(row['Tasks'])
@@ -74,7 +85,7 @@ def get_user_data(username):
             except: row['Cards'] = []
             return row
             
-    # Kullanıcı yoksa oluştur (Burası yazma işlemi olduğu için cache kullanamaz)
+    # Yeni Kullanıcı
     sheet = get_safe_sheet()
     if sheet:
         new_user = {
@@ -84,10 +95,9 @@ def get_user_data(username):
         }
         try:
             sheet.append_row(list(new_user.values()))
-            # Cache'i temizle ki yeni kullanıcı listede görünsün
             get_cached_records.clear()
         except:
-            st.warning("Yeni kullanıcı oluşturulurken bağlantı koptu. Tekrar deneyin.")
+            st.warning("Bağlantı hatası, tekrar deneyin.")
             return None
             
         new_user['History'] = []
@@ -98,28 +108,24 @@ def get_user_data(username):
 
 def update_user_data(user_data):
     sheet = get_safe_sheet()
-    if sheet is None:
-        st.error("Kaydedilemedi: Bağlantı yok.")
-        return
+    if sheet is None: return
 
     try:
         cell = sheet.find(user_data['Username'])
         row_num = cell.row
         
-        # Güncelleme işlemleri
         sheet.update_cell(row_num, 2, user_data['XP'])
         sheet.update_cell(row_num, 4, json.dumps(user_data['History']))
         sheet.update_cell(row_num, 5, json.dumps(user_data['Tasks']))
         sheet.update_cell(row_num, 6, json.dumps(user_data['Cards']))
         sheet.update_cell(row_num, 7, str(datetime.date.today()))
         
-        # Cache'i temizle ki liderlik tablosu güncellensin
         get_cached_records.clear()
         
     except Exception as e:
-        st.warning(f"Kaydetme sırasında hata: {e}. (Merak etme, puanın yerelde duruyor, tekrar dene)")
+        st.warning(f"Kaydetme hatası: {e}")
 
-# --- 3. UYGULAMA MANTIĞI ---
+# --- 3. UYGULAMA ---
 
 if 'username' not in st.session_state:
     st.title("🦉 Study OS Online")
@@ -131,15 +137,14 @@ if 'username' not in st.session_state:
             st.rerun()
     st.stop()
 
-# --- GİRİŞ YAPILDIKTAN SONRA ---
 username = st.session_state.username
 
 if 'data' not in st.session_state:
-    with st.spinner("Sunucuya bağlanılıyor..."): # Yükleniyor animasyonu
+    with st.spinner("Sunucuya bağlanılıyor..."):
         user_data = get_user_data(username)
     
     if user_data is None:
-        st.error("Veriler yüklenemedi. Lütfen sayfayı yenileyin.")
+        st.error("Veriler yüklenemedi.")
         st.stop()
     st.session_state.data = user_data
     
@@ -148,40 +153,28 @@ data = st.session_state.data
 if 'start_time' not in st.session_state: st.session_state.start_time = None
 if 'is_running' not in st.session_state: st.session_state.is_running = False
 
-# --- SIDEBAR ---
 with st.sidebar:
     st.markdown(f"### 👤 {username}")
     st.markdown(f"**XP:** {data['XP']}")
-    
     st.markdown("---")
     st.subheader("🏆 Liderlik Tablosu")
     
-    # Liderlik tablosunu önbellekten çek
     all_records = get_cached_records()
     if all_records:
         sorted_users = sorted(all_records, key=lambda x: x['XP'], reverse=True)
-        
         for rank, u in enumerate(sorted_users, 1):
-            medal = ""
-            if rank == 1: style = "leaderboard-rank-1"; medal="🥇"
-            elif rank == 2: style = "leaderboard-rank-2"; medal="🥈"
-            elif rank == 3: style = "leaderboard-rank-3"; medal="🥉"
-            else: style = ""; medal = f"#{rank}"
-            
+            medal = "🥇" if rank == 1 else "🥈" if rank == 2 else "🥉" if rank == 3 else f"#{rank}"
+            color = "#FFD700" if rank == 1 else "#C0C0C0" if rank == 2 else "#CD7F32" if rank == 3 else "#e0e0e0"
             st.markdown(f"""
             <div class="leaderboard-row">
-                <span class="{style}">{medal} {u['Username']}</span>
+                <span style="color:{color}; font-weight:bold;">{medal} {u['Username']}</span>
                 <span style="color:#d4af37;">{u['XP']} XP</span>
-            </div>
-            """, unsafe_allow_html=True)
-    else:
-        st.caption("Sıralama yükleniyor...")
+            </div>""", unsafe_allow_html=True)
     
     if st.button("🔄 Yenile"):
         get_cached_records.clear()
         st.rerun()
 
-# --- ANA EKRAN ---
 st.title("Study OS Online")
 st.caption(f"Hoş geldin, {username}. Rakiplerin çalışıyor, ya sen?")
 
@@ -208,10 +201,7 @@ with tab1:
                 data['XP'] += 50
                 new_hist = {"date": str(datetime.datetime.now()), "course": "Online Çalışma", "duration": 25, "xp": 50}
                 data['History'].insert(0, new_hist)
-                
-                # Kaydetme işlemi (Hata olursa uyarır ama çökmez)
                 update_user_data(data)
-                
                 st.success("Oturum Bitti! +50 XP (Buluta Kaydedildi)")
                 st.rerun()
             
@@ -221,7 +211,6 @@ with tab1:
             if st.button("🛑 İPTAL"):
                 st.session_state.is_running = False
                 st.rerun()
-            
             time.sleep(1)
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
