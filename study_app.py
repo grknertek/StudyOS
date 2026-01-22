@@ -3,10 +3,8 @@ import pandas as pd
 import datetime
 import time
 import json
-import random
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import streamlit.components.v1 as components
 
 # --- 1. AYARLAR VE CSS ---
 st.set_page_config(page_title="Study OS Online", page_icon="🦉", layout="wide")
@@ -25,33 +23,35 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. GOOGLE SHEETS BAĞLANTISI ---
-# Bu fonksiyon Streamlit Secrets'tan veriyi okuyup bağlanır
+# --- 2. GOOGLE SHEETS BAĞLANTISI (CACHE İLE KORUMALI) ---
+
+# Bağlantıyı önbelleğe alıyoruz ki her seferinde Google'a sormasın
+@st.cache_resource
 def get_google_sheet_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    # Secrets'tan kimlik bilgilerini al
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
     return client
 
-# Veritabanı İşlemleri
+# Veriyi çekerken hata olursa uygulamayı çökertme, uyar
 def get_all_data():
     try:
         client = get_google_sheet_client()
         sheet = client.open("StudyOS_DB").sheet1
-        # Tüm verileri al (Liste olarak döner)
         data = sheet.get_all_records()
         return data, sheet
     except Exception as e:
-        st.error(f"Veritabanı Hatası: {e}")
         return [], None
 
 def get_user_data(username, sheet, all_records):
+    # Eğer sheet bağlantısı kopuksa işlem yapma
+    if sheet is None:
+        return None
+
     # Kullanıcıyı bul
     for row in all_records:
         if row['Username'] == username:
-            # JSON stringlerini geri çevir
             try: row['History'] = json.loads(row['History'])
             except: row['History'] = []
             try: row['Tasks'] = json.loads(row['Tasks'])
@@ -60,36 +60,37 @@ def get_user_data(username, sheet, all_records):
             except: row['Cards'] = []
             return row
             
-    # Kullanıcı yoksa oluştur (Varsayılan Veri)
+    # Kullanıcı yoksa oluştur
     new_user = {
         "Username": username, "XP": 0, "Level": 1, 
         "History": "[]", "Tasks": "[]", "Cards": "[]", 
         "Last_Login": str(datetime.date.today())
     }
-    # Sheet'e ekle
     sheet.append_row(list(new_user.values()))
-    # Formatı düzeltip döndür
+    
     new_user['History'] = []
     new_user['Tasks'] = []
     new_user['Cards'] = []
     return new_user
 
 def update_user_data(sheet, user_data):
-    # JSON'a çevirip güncelle
-    cell = sheet.find(user_data['Username'])
-    row_num = cell.row
-    
-    # Sadece değişenleri güncellemek daha güvenli ama şimdilik satırı güncelleyelim
-    # Not: History, Tasks, Cards JSON string olmalı
-    sheet.update_cell(row_num, 2, user_data['XP']) # XP
-    sheet.update_cell(row_num, 4, json.dumps(user_data['History']))
-    sheet.update_cell(row_num, 5, json.dumps(user_data['Tasks']))
-    sheet.update_cell(row_num, 6, json.dumps(user_data['Cards']))
-    sheet.update_cell(row_num, 7, str(datetime.date.today()))
+    if sheet is None:
+        st.error("Bağlantı hatası! Veriler kaydedilemedi.")
+        return
+
+    try:
+        cell = sheet.find(user_data['Username'])
+        row_num = cell.row
+        sheet.update_cell(row_num, 2, user_data['XP'])
+        sheet.update_cell(row_num, 4, json.dumps(user_data['History']))
+        sheet.update_cell(row_num, 5, json.dumps(user_data['Tasks']))
+        sheet.update_cell(row_num, 6, json.dumps(user_data['Cards']))
+        sheet.update_cell(row_num, 7, str(datetime.date.today()))
+    except Exception as e:
+        st.warning(f"Kaydetme sırasında ufak bir takılma oldu: {e}")
 
 # --- 3. UYGULAMA MANTIĞI ---
 
-# Login Ekranı (Basit İsim Girişi)
 if 'username' not in st.session_state:
     st.title("🦉 Study OS Online")
     st.markdown("Akademik yolculuğuna başlamak için ismini gir.")
@@ -98,24 +99,30 @@ if 'username' not in st.session_state:
         if name_input:
             st.session_state.username = name_input
             st.rerun()
-    st.stop() # İsim girmeden aşağıyı gösterme
+    st.stop()
 
 # --- GİRİŞ YAPILDIKTAN SONRA ---
 username = st.session_state.username
 all_records, sheet = get_all_data()
 
-# Kullanıcı verisini çek
-if 'data' not in st.session_state:
-    st.session_state.data = get_user_data(username, sheet, all_records)
-    
-data = st.session_state.data # Kısa yol
+# KRİTİK HATA KONTROLÜ (Sheet None ise dur)
+if sheet is None:
+    st.error("⚠️ Veritabanına bağlanılamadı. Google API kotası dolmuş olabilir. Lütfen 1 dakika bekleyip sayfayı yenileyin.")
+    st.stop()
 
-# State Tanımları
+if 'data' not in st.session_state:
+    user_data = get_user_data(username, sheet, all_records)
+    if user_data is None:
+        st.error("Kullanıcı verisi oluşturulamadı. Lütfen sayfayı yenileyin.")
+        st.stop()
+    st.session_state.data = user_data
+    
+data = st.session_state.data
+
 if 'start_time' not in st.session_state: st.session_state.start_time = None
 if 'is_running' not in st.session_state: st.session_state.is_running = False
-if 'pomo_mode' not in st.session_state: st.session_state.pomo_mode = "Work"
 
-# --- SIDEBAR (LİDERLİK TABLOSU) ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.markdown(f"### 👤 {username}")
     st.markdown(f"**XP:** {data['XP']}")
@@ -123,8 +130,6 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🏆 Liderlik Tablosu")
     
-    # Sıralama Mantığı
-    # Verileri XP'ye göre sırala
     sorted_users = sorted(all_records, key=lambda x: x['XP'], reverse=True)
     
     for rank, u in enumerate(sorted_users, 1):
@@ -142,9 +147,10 @@ with st.sidebar:
         """, unsafe_allow_html=True)
     
     if st.button("🔄 Yenile"):
+        st.cache_resource.clear()
         st.rerun()
 
-# --- ANA EKRAN (Basitleştirilmiş Hibrit Mod) ---
+# --- ANA EKRAN ---
 st.title("Study OS Online")
 st.caption(f"Hoş geldin, {username}. Rakiplerin çalışıyor, ya sen?")
 
@@ -168,12 +174,9 @@ with tab1:
             if remaining <= 0:
                 st.balloons()
                 st.session_state.is_running = False
-                # XP KAZANMA & KAYDETME
                 data['XP'] += 50
                 new_hist = {"date": str(datetime.datetime.now()), "course": "Online Çalışma", "duration": 25, "xp": 50}
                 data['History'].insert(0, new_hist)
-                
-                # BULUTA KAYDET
                 update_user_data(sheet, data)
                 st.success("Oturum Bitti! +50 XP (Buluta Kaydedildi)")
                 st.rerun()
