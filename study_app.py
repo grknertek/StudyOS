@@ -6,89 +6,101 @@ import json
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# --- 1. GÖRSEL VE ATMOSFER AYARLARI ---
-st.set_page_config(page_title="Study OS Atmosphere", page_icon="🦉", layout="wide")
+# --- 1. PREMIUM GÖRSEL AYARLAR ---
+st.set_page_config(page_title="Study OS Grand Design", page_icon="🍄", layout="wide")
 
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
     
-    /* GENEL ARKA PLAN */
+    /* GENEL ATMOSFER (Derin Siyah & Altın) */
     .stApp {
         background-color: #050505;
-        background-image: radial-gradient(circle at 50% 0%, #1f1f1f 0%, #050505 80%);
+        background-image: radial-gradient(circle at 50% 0%, #1a1510 0%, #050505 80%);
         color: #e0e0e0;
         font-family: 'Inter', sans-serif;
     }
     
-    /* TİPOGRAFİ */
+    /* BAŞLIKLAR */
     h1, h2, h3, h4 {
         font-family: 'Playfair Display', serif;
         color: #d4af37;
-        letter-spacing: 0.5px;
-        text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        letter-spacing: 1px;
+        text-shadow: 0 4px 10px rgba(0,0,0,0.8);
     }
     
-    /* CAM KARTLAR (GLASSMORPHISM) */
+    /* CAM KARTLAR (Daha Kaliteli) */
     .glass-card {
-        background: rgba(20, 20, 20, 0.6);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(212, 175, 55, 0.15);
-        border-radius: 16px;
+        background: rgba(25, 20, 15, 0.7);
+        backdrop-filter: blur(15px);
+        -webkit-backdrop-filter: blur(15px);
+        border: 1px solid rgba(212, 175, 55, 0.2);
+        border-radius: 20px;
         padding: 30px;
         margin-bottom: 25px;
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
     }
     
-    /* GİRİŞ KUTULARI (INPUTS) */
+    /* PROFİL RESMİ (BAYKUŞ) */
+    .profile-img {
+        width: 160px;
+        height: 160px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 3px solid #d4af37;
+        box-shadow: 0 0 25px rgba(212, 175, 55, 0.3);
+        margin-bottom: 15px;
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    
+    /* INPUT VE SEÇİCİLER */
     .stTextInput input, .stSelectbox div[data-baseweb="select"] > div {
-        background-color: rgba(255, 255, 255, 0.05);
-        color: #d4af37;
-        border: 1px solid #333;
-        border-radius: 8px;
+        background-color: rgba(0, 0, 0, 0.4) !important;
+        color: #d4af37 !important;
+        border: 1px solid #443322 !important;
+        border-radius: 10px;
     }
     
-    /* BUTONLAR */
+    /* BUTONLAR (ALTIN EFEKTLİ) */
     .stButton>button {
-        background: linear-gradient(145deg, #2b221a, #1a1510);
+        background: linear-gradient(145deg, #3e3226, #1a1510);
         color: #d4af37;
         border: 1px solid #d4af37;
         font-family: 'Playfair Display', serif;
+        font-size: 16px;
+        padding: 10px 24px;
         border-radius: 8px;
-        font-weight: bold;
         transition: all 0.3s ease;
         text-transform: uppercase;
-        letter-spacing: 1px;
+        letter-spacing: 1.5px;
+        width: 100%;
     }
     .stButton>button:hover {
         background: #d4af37;
         color: #000;
-        box-shadow: 0 0 15px rgba(212, 175, 55, 0.4);
+        box-shadow: 0 0 20px rgba(212, 175, 55, 0.5);
+        border-color: #fff;
     }
     
     /* LİDERLİK TABLOSU */
     .leaderboard-row {
-        padding: 12px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 15px;
+        border-bottom: 1px solid rgba(212, 175, 55, 0.1);
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background: rgba(0, 0, 0, 0.2);
-        margin-bottom: 6px;
-        border-radius: 6px;
+        background: linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(0,0,0,0) 100%);
+        margin-bottom: 8px;
+        border-radius: 8px;
         transition: transform 0.2s;
     }
     .leaderboard-row:hover {
-        transform: translateX(5px);
-        background: rgba(212, 175, 55, 0.1);
+        transform: scale(1.02);
+        background: rgba(212, 175, 55, 0.08);
+        border-left: 3px solid #d4af37;
     }
-    .rank-1 { color: #FFD700; font-weight: 900; text-shadow: 0 0 10px #FFD700; }
-    .rank-2 { color: #C0C0C0; font-weight: bold; }
-    .rank-3 { color: #CD7F32; font-weight: bold; }
-    
-    /* CHECKBOX */
-    .stCheckbox label { color: #aaa; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -121,7 +133,6 @@ def fetch_all_data_now():
         except: return []
     return []
 
-# ÇİFT ÜYELİK KORUMALI GİRİŞ
 def login_or_register(username):
     sheet = get_safe_sheet()
     if not sheet: return None
@@ -174,15 +185,22 @@ def delete_user_from_cloud(username_to_delete):
 # --- 3. GİRİŞ EKRANI ---
 if 'username' not in st.session_state:
     st.markdown("<br><br>", unsafe_allow_html=True)
-    st.markdown("<h1 style='text-align: center; font-size: 60px;'>🦉</h1>", unsafe_allow_html=True)
-    st.markdown("<h1 style='text-align: center;'>Study OS <span style='font-size: 20px; color:#888;'>Atmosphere</span></h1>", unsafe_allow_html=True)
+    # Yeni Baykuş Resmi (Büyük)
+    st.markdown("""
+    <div style="text-align: center;">
+        <img src="https://images.unsplash.com/photo-1519052537078-e6302a4968d4?q=80&w=1000&auto=format&fit=crop" 
+             class="profile-img" style="width: 200px; height: 200px;">
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("<h1 style='text-align: center;'>Study OS</h1>", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         with st.form("login_form"):
             name_input = st.text_input("Kimsin sen, gezgin?", placeholder="Kod Adın...")
-            submitted = st.form_submit_button("Kapıdan Gir", use_container_width=True)
+            submitted = st.form_submit_button("Kapıdan Gir")
             if submitted and name_input:
                 with st.spinner("Parşömenler taranıyor..."):
                     user_data = login_or_register(name_input)
@@ -202,54 +220,57 @@ data = st.session_state.user_data
 if 'start_time' not in st.session_state: st.session_state.start_time = None
 if 'is_running' not in st.session_state: st.session_state.is_running = False
 if 'focus_mode' not in st.session_state: st.session_state.focus_mode = "Pomodoro"
+if 'pomo_duration' not in st.session_state: st.session_state.pomo_duration = 25
 
-# --- SIDEBAR (ATMOSFER & LİDERLİK) ---
+# --- SIDEBAR (YENİ TASARIM) ---
 with st.sidebar:
+    # 1. PROFİL KARTI
     st.markdown(f"""
-    <div style="text-align:center; padding: 10px;">
-        <div style="font-size: 60px; text-shadow: 0 0 20px #d4af37;">🦉</div>
-        <h2 style="margin:0;">{username}</h2>
-        <h3 style="color:#d4af37; border-bottom: 1px solid #444; padding-bottom:10px;">{data['XP']} XP</h3>
+    <div style="text-align:center; margin-bottom: 20px;">
+        <img src="https://images.unsplash.com/photo-1519052537078-e6302a4968d4?q=80&w=1000&auto=format&fit=crop" class="profile-img">
+        <h2 style="margin:10px 0 0 0; font-size: 24px;">{username}</h2>
+        <p style="color:#888; font-size: 14px; margin-top:5px;">Seviye {int(data['XP']/500) + 1}</p>
+        <div style="background: rgba(212, 175, 55, 0.1); padding: 5px 15px; border-radius: 20px; display: inline-block; border: 1px solid rgba(212,175,55,0.3);">
+            <span style="color:#d4af37; font-weight:bold;">{data['XP']} XP</span>
+        </div>
     </div>
     """, unsafe_allow_html=True)
     
-    # 🎧 ATMOSFER BÖLÜMÜ
+    st.markdown("---")
+    
+    # 2. ATMOSFER
     st.subheader("🎧 Atmosfer")
-    sound_choice = st.selectbox("Ses Manzarası Seç:", 
+    sound_choice = st.selectbox("Ses Manzarası:", 
                                 ["Sessiz 🔇", "Yağmurlu Kütüphane 🌧️", "Şömine Ateşi 🔥", "Lofi Study ☕", "Brown Noise (Odak) 🧠"])
     
-    if "Yağmurlu" in sound_choice:
-        st.video("https://www.youtube.com/watch?v=mPZkdNFkNps")
-    elif "Şömine" in sound_choice:
-        st.video("https://www.youtube.com/watch?v=K0pJRo0XU8s")
-    elif "Lofi" in sound_choice:
-        st.video("https://www.youtube.com/watch?v=jfKfPfyJRdk")
-    elif "Brown" in sound_choice:
-        st.video("https://www.youtube.com/watch?v=RqzGzwTY-6w")
+    if "Yağmurlu" in sound_choice: st.video("https://www.youtube.com/watch?v=mPZkdNFkNps")
+    elif "Şömine" in sound_choice: st.video("https://www.youtube.com/watch?v=K0pJRo0XU8s")
+    elif "Lofi" in sound_choice: st.video("https://www.youtube.com/watch?v=jfKfPfyJRdk")
+    elif "Brown" in sound_choice: st.video("https://www.youtube.com/watch?v=RqzGzwTY-6w")
     
     st.markdown("---")
     
-    if st.button("🔄 Liderlik Tablosunu Yenile", use_container_width=True):
+    if st.button("🔄 Liderlik Tablosunu Yenile"):
         st.session_state.all_records_view = fetch_all_data_now()
     
+    # 3. LİDERLİK TABLOSU
     st.subheader("🏆 Liderler")
     if 'all_records_view' not in st.session_state:
         st.session_state.all_records_view = fetch_all_data_now()
         
-    admin_key = st.text_input("Admin:", type="password", placeholder="Gizli")
+    admin_key = st.text_input("Admin:", type="password", placeholder="Gizli", label_visibility="collapsed")
     is_admin = (admin_key == "admin")
     
     sorted_users = sorted(st.session_state.all_records_view, key=lambda x: x['XP'], reverse=True)
     
     for rank, u in enumerate(sorted_users, 1):
         medal = "🥇" if rank == 1 else "🥈" if rank == 2 else "🥉" if rank == 3 else f"#{rank}"
-        style_cls = f"rank-{rank}" if rank <= 3 else ""
         
         col_rank, col_del = st.columns([4, 1])
         with col_rank:
             st.markdown(f"""
             <div class="leaderboard-row">
-                <span class="{style_cls}">{medal} {u['Username']}</span>
+                <span style="color: {'#FFD700' if rank==1 else '#e0e0e0'}; font-weight:bold;">{medal} {u['Username']}</span>
                 <span style="color:#d4af37;">{u['XP']}</span>
             </div>""", unsafe_allow_html=True)
         
@@ -265,54 +286,73 @@ with st.sidebar:
 st.title("Study OS")
 st.caption("“Zihnin neredeyse, gücün oradadır.”")
 
-tab1, tab2, tab3 = st.tabs(["🔥 Odaklan", "📜 Ajanda", "🕰️ Geçmiş"])
+tab1, tab2, tab3 = st.tabs(["🍄 Odaklan", "📜 Ajanda", "🕰️ Geçmiş"])
 
-# --- TAB 1: ODAKLAN ---
+# --- TAB 1: ODAKLANMA (MANTAR MODU) ---
 with tab1:
     col_main, col_stat = st.columns([2, 1])
     
     with col_main:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         
-        mode = st.radio("Mod:", ["🍅 Pomodoro (25 dk)", "⏱️ Klasik (Kronometre)"], horizontal=True, disabled=st.session_state.is_running)
+        # 1. MOD SEÇİMİ (Radio Button)
+        mode = st.radio("Mod:", ["🍄 Mantar (Pomodoro)", "⏱️ Klasik (Kronometre)"], horizontal=True, disabled=st.session_state.is_running)
+        
+        # 2. SÜRE SEÇİMİ (Sadece Mantar Modu ise göster)
+        if "Mantar" in mode:
+            duration_opt = st.selectbox("Süre Seç:", ["25 dk (Klasik)", "50 dk (Derin Odak)", "90 dk (Flow State)"], disabled=st.session_state.is_running)
+            # Seçilen süreyi sayıya çevir
+            pomo_min = int(duration_opt.split(" ")[0])
+        
+        st.markdown("---")
         study_topic = st.text_input("Çalışma Konusu:", placeholder="Örn: Edebiyat, Matematik...")
         
         if not st.session_state.is_running:
-            btn_text = "BAŞLAT"
-            if st.button(btn_text, use_container_width=True):
+            btn_text = f"🔥 {pomo_min} DK BAŞLAT" if "Mantar" in mode else "⏱️ KRONOMETRE BAŞLAT"
+            if st.button(btn_text):
                 if study_topic:
                     st.session_state.is_running = True
                     st.session_state.start_time = time.time()
                     st.session_state.focus_mode = mode
+                    if "Mantar" in mode:
+                        st.session_state.pomo_duration = pomo_min
                     st.rerun()
                 else:
                     st.warning("Lütfen bir konu yaz!")
         else:
+            # AKTİF SAYAÇ
             elapsed = int(time.time() - st.session_state.start_time)
             
-            if "Pomodoro" in st.session_state.focus_mode:
-                remaining = (25 * 60) - elapsed
+            if "Mantar" in st.session_state.focus_mode:
+                target = st.session_state.pomo_duration * 60
+                remaining = target - elapsed
+                
                 if remaining <= 0:
                     st.balloons()
                     st.session_state.is_running = False
-                    xp_gain = 50
+                    
+                    # XP HESABI: Dakika başına 2 XP
+                    xp_gain = st.session_state.pomo_duration * 2
                     data['XP'] += xp_gain
-                    new_hist = {"date": str(datetime.datetime.now())[:16], "course": study_topic, "duration": 25, "xp": xp_gain}
+                    new_hist = {"date": str(datetime.datetime.now())[:16], "course": study_topic, "duration": st.session_state.pomo_duration, "xp": xp_gain}
                     data['History'].insert(0, new_hist)
                     sync_user_to_cloud(data)
-                    st.success(f"Pomodoro Bitti! +50 XP")
+                    
+                    st.success(f"Oturum Bitti! +{xp_gain} XP")
                     st.rerun()
+                
                 mins, secs = divmod(remaining, 60)
-                color = "#ff4b4b"
+                color = "#ff4b4b" # Kırmızı (Mantar rengi)
             else:
                 mins, secs = divmod(elapsed, 60)
-                color = "#d4af37"
+                color = "#d4af37" # Altın
             
-            st.markdown(f"<h1 style='text-align:center; font-size: 80px; color:{color}; text-shadow: 0 0 30px {color};'>{mins:02d}:{secs:02d}</h1>", unsafe_allow_html=True)
+            st.markdown(f"<h1 style='text-align:center; font-size: 90px; color:{color}; text-shadow: 0 0 30px {color}; font-family: monospace;'>{mins:02d}:{secs:02d}</h1>", unsafe_allow_html=True)
             st.caption(f"Konu: {study_topic}")
             
-            if st.button("🛑 DURDUR & KAYDET", use_container_width=True):
+            if st.button("🛑 DURDUR & KAYDET"):
                 st.session_state.is_running = False
+                # Klasik mod kaydı
                 if "Klasik" in st.session_state.focus_mode:
                     duration_mins = elapsed // 60
                     if duration_mins >= 1:
@@ -330,10 +370,9 @@ with tab1:
 
     with col_stat:
         st.markdown(f"""
-        <div class="glass-card">
-            <h4 style="color:#888; margin:0;">Seviye</h4>
-            <h2 style="margin:0; color:#FFD700;">{int(data['XP']/500) + 1}</h2>
-            <p style="font-size:12px; color:#666;">Sonraki seviyeye: {500 - (data['XP'] % 500)} XP</p>
+        <div class="glass-card" style="text-align:center;">
+            <h4 style="color:#888; margin:0;">Mevcut XP</h4>
+            <h1 style="margin:0; color:#FFD700; font-size:40px;">{data['XP']}</h1>
         </div>
         """, unsafe_allow_html=True)
 
@@ -344,7 +383,7 @@ with tab2:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         with st.form("add_task"):
             new_task = st.text_input("Yeni Görev:")
-            if st.form_submit_button("Listeye Ekle", use_container_width=True) and new_task:
+            if st.form_submit_button("Listeye Ekle") and new_task:
                 data['Tasks'].append({"task": new_task, "done": False})
                 sync_user_to_cloud(data)
                 st.rerun()
@@ -364,7 +403,7 @@ with tab2:
                             st.toast("Görev tamamlandı! +20 XP")
                             time.sleep(1)
                             st.rerun()
-                    st.markdown("<hr style='border-top: 1px dashed #333;'>", unsafe_allow_html=True)
+                    st.markdown("<hr style='border-top: 1px dashed rgba(212,175,55,0.3);'>", unsafe_allow_html=True)
         else:
             st.info("Ajandan boş. Özgürsün!")
 
