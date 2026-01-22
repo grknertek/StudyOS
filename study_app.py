@@ -1,43 +1,22 @@
 import streamlit as st
-import os
-import subprocess
-import sys
-import time
+import pandas as pd
 import datetime
+import time
 import json
 import random
-import pandas as pd
-
-# --- 0. OTOMATİK YÜKLEYİCİ (GARANTİ) ---
-def install_and_import(package):
-    try:
-        __import__(package)
-    except ImportError:
-        try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-        except: pass
-
-# Kritik kütüphaneleri kontrol et
-try:
-    import plotly.express as px
-    import plotly.graph_objects as go
-except ImportError:
-    install_and_import("plotly")
-    import plotly.express as px
-    import plotly.graph_objects as go
-
-try:
-    import google.generativeai as genai
-except ImportError:
-    install_and_import("google-generativeai")
-    import google.generativeai as genai
-
 import gspread
+import plotly.express as px
+import plotly.graph_objects as go
+import google.generativeai as genai
 from oauth2client.service_account import ServiceAccountCredentials
 from gspread.exceptions import APIError
 
 # --- 1. AYARLAR ---
 st.set_page_config(page_title="Study OS God Mode", page_icon="🦉", layout="wide")
+
+# Gereksiz uyarıları sustur
+import warnings
+warnings.filterwarnings("ignore")
 
 st.markdown("""
     <style>
@@ -53,10 +32,12 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. BACKEND & API ---
+# --- 2. BACKEND (ULTRA HAFİF MOD) ---
 
 if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    try:
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    except: pass
 
 RANKS = {0: "Mürekkep Çırağı 🖋️", 500: "Kütüphane Muhafızı 🗝️", 1500: "Hakikat Arayıcısı 🕯️", 3000: "Bilgelik Mimarı 🏛️", 5000: "Entelektüel Lord 👑"}
 
@@ -74,28 +55,21 @@ def get_google_sheet_client():
     client = gspread.authorize(creds)
     return client
 
-# Geliştirilmiş Bağlantı Fonksiyonu (Exponential Backoff)
+# Bağlantı Fonksiyonu (Sadece 1 kere dener, zorlamaz)
 def get_db():
-    retries = [2, 5, 10] # Bekleme süreleri: 2sn, 5sn, 10sn
-    for wait_time in retries:
-        try:
-            client = get_google_sheet_client()
-            sheet = client.open("StudyOS_DB")
-            try: users_sheet = sheet.get_worksheet(0)
-            except: users_sheet = sheet.add_worksheet(title="Users", rows=100, cols=10)
-            try: chat_sheet = sheet.get_worksheet(1)
-            except: chat_sheet = sheet.add_worksheet(title="OwlPost", rows=1000, cols=3)
-            return users_sheet, chat_sheet
-        except APIError as e:
-            if e.response.status_code == 429:
-                time.sleep(wait_time) # Kademeli bekle
-                continue
-            return None, None
-        except:
-            time.sleep(1)
-    return None, None
+    try:
+        client = get_google_sheet_client()
+        sheet = client.open("StudyOS_DB")
+        try: users_sheet = sheet.get_worksheet(0)
+        except: users_sheet = sheet.add_worksheet(title="Users", rows=100, cols=10)
+        try: chat_sheet = sheet.get_worksheet(1)
+        except: chat_sheet = sheet.add_worksheet(title="OwlPost", rows=1000, cols=3)
+        return users_sheet, chat_sheet
+    except Exception as e:
+        return None, None
 
-@st.cache_data(ttl=60)
+# 10 DAKİKALIK ÖNBELLEK (Kotayı Kurtaran Kahraman)
+@st.cache_data(ttl=600) 
 def get_cached_leaderboard():
     users_sheet, _ = get_db()
     if users_sheet:
@@ -107,8 +81,8 @@ def login_or_register(username):
     users_sheet, _ = get_db()
     if not users_sheet: return None
     
+    # Başlık kontrolünü sadece tablo boşsa yap (Maliyetli işlem)
     try:
-        # Sütun başlıklarını kontrol et
         if not users_sheet.row_values(1):
             users_sheet.append_row(["Username", "XP", "Level", "History", "Tasks", "Cards", "Last_Login", "Inventory", "Active_Buffs", "Last_Oracle"])
     except: pass
@@ -148,9 +122,9 @@ def sync_user_to_cloud(user_data):
     try:
         cell = users_sheet.find(user_data['Username'])
         r = cell.row
-        # Sıralı güncelleme (daha güvenli)
         users_sheet.update_cell(r, 2, user_data['XP'])
         users_sheet.update_cell(r, 4, json.dumps(user_data['History']))
+        users_sheet.update_cell(r, 5, json.dumps(user_data['Tasks']))
         users_sheet.update_cell(r, 8, json.dumps(user_data['Inventory']))
         users_sheet.update_cell(r, 9, json.dumps(user_data['Active_Buffs']))
         users_sheet.update_cell(r, 10, str(user_data['Last_Oracle']))
@@ -174,6 +148,21 @@ def create_radar_chart(history):
     fig.update_layout(polar=dict(bgcolor='rgba(0,0,0,0)', radialaxis=dict(visible=True, showticklabels=False)), paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#d4af37'))
     return fig
 
+def send_chat_message(username, message):
+    _, chat_sheet = get_db()
+    if chat_sheet:
+        try: chat_sheet.append_row([datetime.datetime.now().strftime("%H:%M"), username, message])
+        except: pass
+
+def get_chat_messages():
+    _, chat_sheet = get_db()
+    if chat_sheet:
+        try: 
+            all_rows = chat_sheet.get_all_values()
+            return all_rows[-20:] if len(all_rows) > 1 else []
+        except: return []
+    return []
+
 # --- GİRİŞ EKRANI ---
 if 'username' not in st.session_state:
     st.markdown("<br><br><h1 style='text-align: center;'>🦉 Study OS <span style='font-size:20px'>God Mode</span></h1>", unsafe_allow_html=True)
@@ -189,7 +178,7 @@ if 'username' not in st.session_state:
                     st.session_state.user_data = user_data
                     st.rerun()
                 else:
-                    st.warning("⏳ Sunucu çok yoğun (429). Lütfen 30 saniye bekleyip tekrar dene.")
+                    st.warning("⏳ Sunucu şu an çok yoğun. Lütfen 1 dakika bekleyip tekrar dene.")
         st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
