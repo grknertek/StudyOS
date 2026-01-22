@@ -4,24 +4,18 @@ import datetime
 import time
 import json
 import random
-import gspread
 import plotly.express as px
 import plotly.graph_objects as go
 import google.generativeai as genai
-from oauth2client.service_account import ServiceAccountCredentials
-from gspread.exceptions import APIError
 
 # --- 1. AYARLAR ---
 st.set_page_config(page_title="Study OS God Mode", page_icon="🦉", layout="wide")
-
-# Gereksiz uyarıları sustur
 import warnings
 warnings.filterwarnings("ignore")
 
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
-    
     .stApp { background-color: #050505; background-image: radial-gradient(circle at 50% 0%, #1a1510 0%, #050505 80%); color: #e0e0e0; font-family: 'Inter', sans-serif; }
     h1, h2, h3, h4 { font-family: 'Playfair Display', serif; color: #d4af37; letter-spacing: 1px; }
     .glass-card { background: rgba(25, 20, 15, 0.8); backdrop-filter: blur(20px); border: 1px solid rgba(212, 175, 55, 0.2); border-radius: 20px; padding: 25px; margin-bottom: 25px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7); }
@@ -32,11 +26,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. BACKEND (ULTRA HAFİF MOD) ---
+# --- 2. BACKEND (OFFLINE / DEMO MODU) ---
+# Not: Veritabanı bağlantıları geçici olarak iptal edildi.
 
 if "GEMINI_API_KEY" in st.secrets:
-    try:
-        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    try: genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     except: pass
 
 RANKS = {0: "Mürekkep Çırağı 🖋️", 500: "Kütüphane Muhafızı 🗝️", 1500: "Hakikat Arayıcısı 🕯️", 3000: "Bilgelik Mimarı 🏛️", 5000: "Entelektüel Lord 👑"}
@@ -47,96 +41,20 @@ def get_rank(xp):
         if xp >= limit: current_rank = RANKS[limit]
     return current_rank
 
-@st.cache_resource
-def get_google_sheet_client():
-    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    creds_dict = dict(st.secrets["gcp_service_account"])
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client = gspread.authorize(creds)
-    return client
-
-# Bağlantı Fonksiyonu (Sadece 1 kere dener, zorlamaz)
-def get_db():
-    try:
-        client = get_google_sheet_client()
-        sheet = client.open("StudyOS_DB")
-        try: users_sheet = sheet.get_worksheet(0)
-        except: users_sheet = sheet.add_worksheet(title="Users", rows=100, cols=10)
-        try: chat_sheet = sheet.get_worksheet(1)
-        except: chat_sheet = sheet.add_worksheet(title="OwlPost", rows=1000, cols=3)
-        return users_sheet, chat_sheet
-    except Exception as e:
-        return None, None
-
-# 10 DAKİKALIK ÖNBELLEK (Kotayı Kurtaran Kahraman)
-@st.cache_data(ttl=600) 
-def get_cached_leaderboard():
-    users_sheet, _ = get_db()
-    if users_sheet:
-        try: return users_sheet.get_all_records()
-        except: return []
-    return []
-
-def login_or_register(username):
-    users_sheet, _ = get_db()
-    if not users_sheet: return None
-    
-    # Başlık kontrolünü sadece tablo boşsa yap (Maliyetli işlem)
-    try:
-        if not users_sheet.row_values(1):
-            users_sheet.append_row(["Username", "XP", "Level", "History", "Tasks", "Cards", "Last_Login", "Inventory", "Active_Buffs", "Last_Oracle"])
-    except: pass
-    
-    try: all_records = users_sheet.get_all_records()
-    except: return None
-    
-    clean_username = username.strip().lower()
-    
-    for row in all_records:
-        if str(row['Username']).strip().lower() == clean_username:
-            for key in ['History', 'Tasks', 'Cards', 'Inventory', 'Active_Buffs']:
-                if key not in row: row[key] = []
-                elif isinstance(row[key], str):
-                    try: row[key] = json.loads(row[key])
-                    except: row[key] = []
-            if 'Last_Oracle' not in row: row['Last_Oracle'] = ""
-            return row
-            
-    new_user = {
-        "Username": username.strip(), "XP": 0, "Level": 1, 
-        "History": [], "Tasks": [], "Cards": [], 
-        "Last_Login": str(datetime.date.today()), 
-        "Inventory": [], "Active_Buffs": [], "Last_Oracle": ""
+def login_or_register_local(username):
+    # Google'a bağlanmaz, sahte veri üretir
+    return {
+        "Username": username, "XP": 120, "Level": 1, 
+        "History": [{"date": "2026-01-22 20:00", "course": "Deneme", "duration": 25, "xp": 50}], 
+        "Tasks": [], "Inventory": [], "Active_Buffs": [], "Last_Oracle": ""
     }
-    save_user = new_user.copy()
-    for key in ['History', 'Tasks', 'Cards', 'Inventory', 'Active_Buffs']:
-        save_user[key] = json.dumps(save_user[key])
-    
-    try: users_sheet.append_row(list(save_user.values()))
-    except: pass
-    return new_user
-
-def sync_user_to_cloud(user_data):
-    users_sheet, _ = get_db()
-    if not users_sheet: return
-    try:
-        cell = users_sheet.find(user_data['Username'])
-        r = cell.row
-        users_sheet.update_cell(r, 2, user_data['XP'])
-        users_sheet.update_cell(r, 4, json.dumps(user_data['History']))
-        users_sheet.update_cell(r, 5, json.dumps(user_data['Tasks']))
-        users_sheet.update_cell(r, 8, json.dumps(user_data['Inventory']))
-        users_sheet.update_cell(r, 9, json.dumps(user_data['Active_Buffs']))
-        users_sheet.update_cell(r, 10, str(user_data['Last_Oracle']))
-        get_cached_leaderboard.clear()
-    except: pass
 
 def ask_oracle(prompt):
     if "GEMINI_API_KEY" not in st.secrets: return "⚠️ API Anahtarı Eksik."
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
         return model.generate_content(f"Sen bilge bir kahinsin. Kısa ve gizemli cevap ver. Soru: {prompt}").text
-    except Exception as e: return f"Bağlantı hatası: {e}"
+    except Exception as e: return f"Kahin uykuda: {e}"
 
 def create_radar_chart(history):
     if not history: return None
@@ -148,37 +66,18 @@ def create_radar_chart(history):
     fig.update_layout(polar=dict(bgcolor='rgba(0,0,0,0)', radialaxis=dict(visible=True, showticklabels=False)), paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#d4af37'))
     return fig
 
-def send_chat_message(username, message):
-    _, chat_sheet = get_db()
-    if chat_sheet:
-        try: chat_sheet.append_row([datetime.datetime.now().strftime("%H:%M"), username, message])
-        except: pass
-
-def get_chat_messages():
-    _, chat_sheet = get_db()
-    if chat_sheet:
-        try: 
-            all_rows = chat_sheet.get_all_values()
-            return all_rows[-20:] if len(all_rows) > 1 else []
-        except: return []
-    return []
-
 # --- GİRİŞ EKRANI ---
 if 'username' not in st.session_state:
-    st.markdown("<br><br><h1 style='text-align: center;'>🦉 Study OS <span style='font-size:20px'>God Mode</span></h1>", unsafe_allow_html=True)
+    st.markdown("<br><br><h1 style='text-align: center;'>🦉 Study OS <span style='font-size:20px'>Offline Mode</span></h1>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.info("⚠️ Google Kotası Dolduğu için 'Çevrimdışı Mod'dasınız. Veriler kaydedilmez.")
         name = st.text_input("Kod Adın:", placeholder="Gezgin...")
         if st.button("Kapıdan Gir"):
-            with st.spinner("Parşömenler taranıyor..."):
-                user_data = login_or_register(name)
-                if user_data:
-                    st.session_state.username = user_data['Username']
-                    st.session_state.user_data = user_data
-                    st.rerun()
-                else:
-                    st.warning("⏳ Sunucu şu an çok yoğun. Lütfen 1 dakika bekleyip tekrar dene.")
+            st.session_state.username = name
+            st.session_state.user_data = login_or_register_local(name)
+            st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
@@ -186,8 +85,6 @@ if 'username' not in st.session_state:
 username = st.session_state.username
 data = st.session_state.user_data
 current_rank = get_rank(data['XP'])
-if 'Inventory' not in data: data['Inventory'] = []
-if 'Active_Buffs' not in data: data['Active_Buffs'] = []
 
 gold_frame_class = "painting-frame-gold" if "Altın Çerçeve" in data['Inventory'] else ""
 mushroom_badge = "🍄" if "Mantar Rozeti" in data['Inventory'] else ""
@@ -249,7 +146,6 @@ with tab1:
                     data['XP'] += final_xp
                     data['History'].insert(0, {"date": str(datetime.datetime.now())[:16], "course": topic, "duration": st.session_state.pomo_duration, "xp": final_xp})
                     data['Active_Buffs'] = []
-                    sync_user_to_cloud(data)
                     st.success(f"Bitti! +{final_xp} XP"); st.rerun()
                 mins, secs = divmod(rem, 60); color="#ff4b4b"
             else:
@@ -287,7 +183,7 @@ with tab3:
             if data['XP'] >= 200:
                 data['XP'] -= 200
                 data['Active_Buffs'] = [{"name": "Odak İksiri", "multiplier": 1.5}]
-                sync_user_to_cloud(data); st.toast("Gluk gluk... 🧪"); time.sleep(1); st.rerun()
+                st.toast("Gluk gluk... 🧪"); time.sleep(1); st.rerun()
             else: st.error("Yetersiz XP")
         st.markdown('</div>', unsafe_allow_html=True)
     with col_s2:
@@ -297,7 +193,7 @@ with tab3:
         elif st.button("Al (500 XP)"):
             if data['XP'] >= 500:
                 data['XP'] -= 500; data['Inventory'].append("Altın Çerçeve")
-                sync_user_to_cloud(data); st.rerun()
+                st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
 with tab4:
@@ -309,7 +205,7 @@ with tab4:
             c = random.choice([{"name":"Büyücü","desc":"(+50 XP)","xp":50}, {"name":"Ermiş","desc":"(+30 XP)","xp":30}, {"name":"Güç","desc":"(+100 XP)","xp":100}])
             st.session_state.card = c
             data['XP'] += c['xp']; data['Last_Oracle'] = today
-            sync_user_to_cloud(data); st.rerun()
+            st.rerun()
     else: st.info("Yarın gel.")
     if 'card' in st.session_state:
         st.markdown(f"<h2>{st.session_state.card['name']}</h2><p>{st.session_state.card['desc']}</p>", unsafe_allow_html=True)
