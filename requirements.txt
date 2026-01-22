@@ -1,1 +1,6 @@
-streamlitpandasgspreadoauth2client
+streamlit
+pandas
+gspread
+oauth2client
+plotly
+google-generativeai
