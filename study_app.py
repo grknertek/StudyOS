@@ -13,7 +13,7 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
     
-    /* GENEL ATMOSFER (Derin Siyah & Altın) */
+    /* GENEL ATMOSFER */
     .stApp {
         background-color: #050505;
         background-image: radial-gradient(circle at 50% 0%, #1a1510 0%, #050505 80%);
@@ -21,7 +21,6 @@ st.markdown("""
         font-family: 'Inter', sans-serif;
     }
     
-    /* BAŞLIKLAR */
     h1, h2, h3, h4 {
         font-family: 'Playfair Display', serif;
         color: #d4af37;
@@ -29,7 +28,7 @@ st.markdown("""
         text-shadow: 0 4px 10px rgba(0,0,0,0.8);
     }
     
-    /* CAM KARTLAR (Daha Kaliteli) */
+    /* CAM KARTLAR */
     .glass-card {
         background: rgba(25, 20, 15, 0.7);
         backdrop-filter: blur(15px);
@@ -41,21 +40,27 @@ st.markdown("""
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
     }
     
-    /* PROFİL RESMİ (BAYKUŞ) */
-    .profile-img {
-        width: 160px;
-        height: 160px;
-        border-radius: 50%;
+    /* HOGWARTS TABLO EFEKTİ (YENİ) */
+    .painting-frame {
+        width: 180px;
+        height: 220px;
         object-fit: cover;
-        border: 3px solid #d4af37;
-        box-shadow: 0 0 25px rgba(212, 175, 55, 0.3);
+        /* Tablo Çerçevesi */
+        border: 8px solid #4a3c31; 
+        border-radius: 4px;
+        /* İç Gölge ve Dış Parlama */
+        box-shadow: 
+            inset 0 0 20px rgba(0,0,0,0.8), /* İç gölge (Eskitme) */
+            0 10px 30px rgba(0,0,0,0.8),    /* Dış gölge */
+            0 0 0 2px #d4af37;              /* Altın ince kenar */
         margin-bottom: 15px;
         display: block;
         margin-left: auto;
         margin-right: auto;
+        filter: contrast(1.1) sepia(0.2); /* Yağlı boya hissi */
     }
     
-    /* INPUT VE SEÇİCİLER */
+    /* INPUTLAR */
     .stTextInput input, .stSelectbox div[data-baseweb="select"] > div {
         background-color: rgba(0, 0, 0, 0.4) !important;
         color: #d4af37 !important;
@@ -63,7 +68,7 @@ st.markdown("""
         border-radius: 10px;
     }
     
-    /* BUTONLAR (ALTIN EFEKTLİ) */
+    /* BUTONLAR */
     .stButton>button {
         background: linear-gradient(145deg, #3e3226, #1a1510);
         color: #d4af37;
@@ -81,10 +86,9 @@ st.markdown("""
         background: #d4af37;
         color: #000;
         box-shadow: 0 0 20px rgba(212, 175, 55, 0.5);
-        border-color: #fff;
     }
     
-    /* LİDERLİK TABLOSU */
+    /* LİDERLİK SATIRLARI */
     .leaderboard-row {
         padding: 15px;
         border-bottom: 1px solid rgba(212, 175, 55, 0.1);
@@ -119,7 +123,7 @@ def get_safe_sheet():
         sheet = client.open("StudyOS_DB").sheet1
         return sheet
     except Exception as e:
-        st.error(f"Sunucu Bağlantı Hatası: {e}")
+        st.error(f"Bağlantı Hatası: {e}")
         return None
 
 def fetch_all_data_now():
@@ -185,11 +189,11 @@ def delete_user_from_cloud(username_to_delete):
 # --- 3. GİRİŞ EKRANI ---
 if 'username' not in st.session_state:
     st.markdown("<br><br>", unsafe_allow_html=True)
-    # Yeni Baykuş Resmi (Büyük)
+    # GİRİŞ EKRANINDAKİ BAYKUŞ (Yeni ve Asil)
     st.markdown("""
     <div style="text-align: center;">
-        <img src="https://images.unsplash.com/photo-1519052537078-e6302a4968d4?q=80&w=1000&auto=format&fit=crop" 
-             class="profile-img" style="width: 200px; height: 200px;">
+        <img src="https://images.unsplash.com/photo-1543549790-8b5f4a028cfb?q=80&w=400&auto=format&fit=crop" 
+             class="painting-frame">
     </div>
     """, unsafe_allow_html=True)
     
@@ -219,15 +223,15 @@ data = st.session_state.user_data
 
 if 'start_time' not in st.session_state: st.session_state.start_time = None
 if 'is_running' not in st.session_state: st.session_state.is_running = False
-if 'focus_mode' not in st.session_state: st.session_state.focus_mode = "Pomodoro"
-if 'pomo_duration' not in st.session_state: st.session_state.pomo_duration = 25
+if 'focus_mode' not in st.session_state: st.session_state.focus_mode = "Mantar (50 dk)"
+if 'pomo_duration' not in st.session_state: st.session_state.pomo_duration = 50
 
-# --- SIDEBAR (YENİ TASARIM) ---
+# --- SIDEBAR ---
 with st.sidebar:
-    # 1. PROFİL KARTI
+    # 1. PROFİL KARTI (TABLO GİBİ RESİM)
     st.markdown(f"""
     <div style="text-align:center; margin-bottom: 20px;">
-        <img src="https://images.unsplash.com/photo-1519052537078-e6302a4968d4?q=80&w=1000&auto=format&fit=crop" class="profile-img">
+        <img src="https://images.unsplash.com/photo-1543549790-8b5f4a028cfb?q=80&w=400&auto=format&fit=crop" class="painting-frame">
         <h2 style="margin:10px 0 0 0; font-size: 24px;">{username}</h2>
         <p style="color:#888; font-size: 14px; margin-top:5px;">Seviye {int(data['XP']/500) + 1}</p>
         <div style="background: rgba(212, 175, 55, 0.1); padding: 5px 15px; border-radius: 20px; display: inline-block; border: 1px solid rgba(212,175,55,0.3);">
@@ -288,27 +292,31 @@ st.caption("“Zihnin neredeyse, gücün oradadır.”")
 
 tab1, tab2, tab3 = st.tabs(["🍄 Odaklan", "📜 Ajanda", "🕰️ Geçmiş"])
 
-# --- TAB 1: ODAKLANMA (MANTAR MODU) ---
+# --- TAB 1: ODAKLANMA ---
 with tab1:
     col_main, col_stat = st.columns([2, 1])
     
     with col_main:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         
-        # 1. MOD SEÇİMİ (Radio Button)
-        mode = st.radio("Mod:", ["🍄 Mantar (Pomodoro)", "⏱️ Klasik (Kronometre)"], horizontal=True, disabled=st.session_state.is_running)
+        # 1. MOD SEÇİMİ
+        mode = st.radio("Mod:", ["🍄 Mantar Modu", "⏱️ Klasik (Kronometre)"], horizontal=True, disabled=st.session_state.is_running)
         
-        # 2. SÜRE SEÇİMİ (Sadece Mantar Modu ise göster)
+        # 2. SÜRE SEÇİMİ (MANTAR MODU İSE)
         if "Mantar" in mode:
             duration_opt = st.selectbox("Süre Seç:", ["25 dk (Klasik)", "50 dk (Derin Odak)", "90 dk (Flow State)"], disabled=st.session_state.is_running)
-            # Seçilen süreyi sayıya çevir
             pomo_min = int(duration_opt.split(" ")[0])
         
         st.markdown("---")
         study_topic = st.text_input("Çalışma Konusu:", placeholder="Örn: Edebiyat, Matematik...")
         
         if not st.session_state.is_running:
-            btn_text = f"🔥 {pomo_min} DK BAŞLAT" if "Mantar" in mode else "⏱️ KRONOMETRE BAŞLAT"
+            # Buton Metni
+            if "Mantar" in mode:
+                btn_text = f"🔥 {pomo_min} DK BAŞLAT"
+            else:
+                btn_text = "⏱️ KRONOMETRE BAŞLAT"
+                
             if st.button(btn_text):
                 if study_topic:
                     st.session_state.is_running = True
@@ -331,7 +339,7 @@ with tab1:
                     st.balloons()
                     st.session_state.is_running = False
                     
-                    # XP HESABI: Dakika başına 2 XP
+                    # XP: Dakika başı 2 XP
                     xp_gain = st.session_state.pomo_duration * 2
                     data['XP'] += xp_gain
                     new_hist = {"date": str(datetime.datetime.now())[:16], "course": study_topic, "duration": st.session_state.pomo_duration, "xp": xp_gain}
@@ -342,8 +350,9 @@ with tab1:
                     st.rerun()
                 
                 mins, secs = divmod(remaining, 60)
-                color = "#ff4b4b" # Kırmızı (Mantar rengi)
+                color = "#ff4b4b" # Kırmızı
             else:
+                # Klasik
                 mins, secs = divmod(elapsed, 60)
                 color = "#d4af37" # Altın
             
@@ -352,7 +361,6 @@ with tab1:
             
             if st.button("🛑 DURDUR & KAYDET"):
                 st.session_state.is_running = False
-                # Klasik mod kaydı
                 if "Klasik" in st.session_state.focus_mode:
                     duration_mins = elapsed // 60
                     if duration_mins >= 1:
