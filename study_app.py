@@ -107,7 +107,9 @@ def get_db():
         try: chat_sheet = sheet.get_worksheet(1)
         except: chat_sheet = sheet.add_worksheet(title="OwlPost", rows=1000, cols=3)
         return users_sheet, chat_sheet
-    except: return None, None
+    except Exception as e:
+        st.error(f"HATA DETAYI: {e}")  # Hatayı ekrana basar
+        return None, None
 
 @st.cache_data(ttl=60)
 def get_cached_leaderboard():
