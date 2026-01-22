@@ -34,13 +34,14 @@ st.markdown("""
         margin-bottom: 25px;
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
     }
-    
-    /* GÖRSEL EFEKTLER */
     .painting-frame {
         width: 160px; height: 200px; object-fit: cover;
         border: 6px solid #4a3c31; border-radius: 4px;
         box-shadow: inset 0 0 20px rgba(0,0,0,0.9), 0 0 15px #d4af37;
         margin: 0 auto 15px auto; display: block; filter: contrast(1.1) sepia(0.3);
+    }
+    .painting-frame-gold {
+        border-color: #d4af37 !important; box-shadow: 0 0 30px #d4af37, inset 0 0 20px #000 !important;
     }
     .tarot-card {
         border: 2px solid #d4af37; border-radius: 10px; padding: 20px;
@@ -48,12 +49,15 @@ st.markdown("""
         animation: fadeIn 2s;
     }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-    
-    /* CHAT & GENEL */
     .chat-row {
         padding: 10px; margin-bottom: 10px; border-radius: 10px;
         background: rgba(255, 255, 255, 0.05); border-left: 3px solid #d4af37;
     }
+    .shop-item {
+        border: 1px solid #444; padding: 15px; border-radius: 10px; text-align: center;
+        background: rgba(0,0,0,0.3); transition: transform 0.2s;
+    }
+    .shop-item:hover { transform: scale(1.03); border-color: #d4af37; }
     .stTextInput input, .stSelectbox div[data-baseweb="select"] > div {
         background-color: rgba(0, 0, 0, 0.5) !important;
         color: #d4af37 !important;
@@ -68,11 +72,12 @@ st.markdown("""
 
 # --- 2. BACKEND & API AYARLARI ---
 
-# Gemini API Yapılandırma
+# Gemini API Yapılandırma (YENİ MODEL: 1.5 Flash)
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 else:
-    st.warning("⚠️ Gemini API Key bulunamadı! Kahin çalışmaz.")
+    # Hata vermesin diye sessizce geçiyoruz, fonksiyonda uyaracağız
+    pass
 
 RANKS = {
     0: "Mürekkep Çırağı 🖋️", 500: "Kütüphane Muhafızı 🗝️",
@@ -116,7 +121,6 @@ def login_or_register(username):
     users_sheet, _ = get_db()
     if not users_sheet: return None
     
-    # Başlık Kontrolü (Yeni Sütunlar: Active_Buffs, Last_Oracle)
     try:
         if not users_sheet.row_values(1):
             users_sheet.append_row(["Username", "XP", "Level", "History", "Tasks", "Cards", "Last_Login", "Inventory", "Active_Buffs", "Last_Oracle"])
@@ -164,32 +168,35 @@ def sync_user_to_cloud(user_data):
         users_sheet.update_cell(row_num, 6, json.dumps(user_data['Cards']))
         users_sheet.update_cell(row_num, 7, str(datetime.date.today()))
         users_sheet.update_cell(row_num, 8, json.dumps(user_data['Inventory']))
-        users_sheet.update_cell(row_num, 9, json.dumps(user_data['Active_Buffs'])) # İksirler
-        users_sheet.update_cell(row_num, 10, str(user_data['Last_Oracle'])) # Tarot
+        users_sheet.update_cell(row_num, 9, json.dumps(user_data['Active_Buffs']))
+        users_sheet.update_cell(row_num, 10, str(user_data['Last_Oracle']))
         
         get_cached_leaderboard.clear()
     except: pass
 
-# --- ÖZELLİK 1: KAHİN (AI) ---
+# --- ÖZELLİK 1: KAHİN (GEMINI 1.5 FLASH) ---
 def ask_oracle(prompt):
+    if "GEMINI_API_KEY" not in st.secrets:
+        return "⚠️ Hata: API Anahtarı eksik. Lütfen Secrets ayarlarını kontrol et."
+    
     try:
-        model = genai.GenerativeModel('gemini-pro')
+        # GÜNCEL MODEL: gemini-1.5-flash (Daha hızlı ve ücretsiz kota dostu)
+        model = genai.GenerativeModel('gemini-1.5-flash')
         system_instruction = "Sen 'Study OS' adlı mistik bir kütüphanenin kadim koruyucususun. Adın 'Kahin'. Dark Academia estetiğiyle, bilgece, metaforlu ve hafif gizemli konuşursun. Kullanıcı bir öğrenci. Cevapların kısa, öz ama derin olsun."
         response = model.generate_content(f"{system_instruction}\n\nSoru: {prompt}")
         return response.text
-    except:
-        return "Kahin şu an meditasyonda... (API Hatası)"
+    except Exception as e:
+        return f"⚠️ Kahin Bağlantı Hatası: {e}"
 
-# --- ÖZELLİK 4: ÖRÜMCEK AĞI (RADAR CHART) ---
+# --- ÖZELLİK 4: ÖRÜMCEK AĞI ---
 def create_radar_chart(history):
     if not history: return None
-    
     df = pd.DataFrame(history)
-    if 'course' not in df.columns: return None
+    if 'course' not in df.columns or df.empty: return None
     
-    # Konulara göre toplam süre
     stats = df.groupby('course')['duration'].sum().reset_index()
-    
+    if stats.empty: return None
+
     fig = go.Figure(data=go.Scatterpolar(
       r=stats['duration'],
       theta=stats['course'],
@@ -197,7 +204,6 @@ def create_radar_chart(history):
       line_color='#d4af37',
       fillcolor='rgba(212, 175, 55, 0.2)'
     ))
-
     fig.update_layout(
       polar=dict(
         radialaxis=dict(visible=True, showticklabels=False, linecolor='#444'),
@@ -211,7 +217,7 @@ def create_radar_chart(history):
     )
     return fig
 
-# --- CHAT SİSTEMİ ---
+# --- CHAT ---
 def send_chat_message(username, message):
     _, chat_sheet = get_db()
     if chat_sheet:
@@ -227,7 +233,7 @@ def get_chat_messages():
         except: return []
     return []
 
-# --- 3. GİRİŞ ---
+# --- GİRİŞ ---
 if 'username' not in st.session_state:
     st.markdown("<br><br><h1 style='text-align: center;'>🦉 Study OS <span style='font-size:20px'>God Mode</span></h1>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1,2,1])
@@ -242,31 +248,35 @@ if 'username' not in st.session_state:
                         st.session_state.username = user_data['Username']
                         st.session_state.user_data = user_data
                         st.rerun()
-                    else: st.error("Sunucu kapalı.")
+                    else: st.error("Sunucu kapalı (Veritabanı bağlantısı yok).")
         st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
-# --- 4. ANA DÖNGÜ ---
+# --- ANA DÖNGÜ ---
 username = st.session_state.username
 data = st.session_state.user_data
 current_rank = get_rank(data['XP'])
+if 'Inventory' not in data: data['Inventory'] = []
+if 'Active_Buffs' not in data: data['Active_Buffs'] = []
 
 # State init
 if 'start_time' not in st.session_state: st.session_state.start_time = None
 if 'is_running' not in st.session_state: st.session_state.is_running = False
 if 'oracle_response' not in st.session_state: st.session_state.oracle_response = ""
 
-# --- SIDEBAR ---
+# Sidebar
+gold_frame_class = "painting-frame-gold" if "Altın Çerçeve" in data['Inventory'] else ""
+mushroom_badge = "🍄" if "Mantar Rozeti" in data['Inventory'] else ""
+
 with st.sidebar:
     st.markdown(f"""
     <div style="text-align:center;">
-        <img src="https://images.unsplash.com/photo-1543549790-8b5f4a028cfb?q=80&w=400" class="painting-frame">
-        <h2 style="margin:0;">{username}</h2>
+        <img src="https://images.unsplash.com/photo-1543549790-8b5f4a028cfb?q=80&w=400" class="painting-frame {gold_frame_class}">
+        <h2 style="margin:0;">{username} {mushroom_badge}</h2>
         <p style="color:#d4af37;">{current_rank}</p>
         <div style="border:1px solid #d4af37; border-radius:15px; padding:5px; margin-top:5px;">{data['XP']} XP</div>
     </div>
     """, unsafe_allow_html=True)
-    
     st.markdown("---")
     st.subheader("🎧 Atmosfer")
     snd = st.selectbox("Ses:", ["Sessiz 🔇", "Yağmurlu 🌧️", "Şömine 🔥", "Lofi ☕", "Brown Noise 🧠"])
@@ -274,29 +284,23 @@ with st.sidebar:
     elif "Şömine" in snd: st.video("https://www.youtube.com/watch?v=K0pJRo0XU8s")
     elif "Lofi" in snd: st.video("https://www.youtube.com/watch?v=jfKfPfyJRdk")
     elif "Brown" in snd: st.video("https://www.youtube.com/watch?v=RqzGzwTY-6w")
-    
-    # AKTİF BUFF GÖSTERGESİ
-    if data.get('Active_Buffs'):
+    if data['Active_Buffs']:
         st.markdown("---")
         st.caption("✨ Aktif İksirler:")
-        for buff in data['Active_Buffs']:
-            st.markdown(f"🧪 **{buff['name']}** (x{buff['multiplier']})")
+        for buff in data['Active_Buffs']: st.markdown(f"🧪 **{buff['name']}** (x{buff['multiplier']})")
 
-# --- ANA EKRAN ---
+# Ana Ekran
 st.title("Study OS")
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🍄 Odaklan", "🔮 Kahin", "🧪 Simya & Dükkan", "🃏 Kader", "🦉 Posta", "📜 Geçmiş"])
 
-# --- TAB 1: ODAKLANMA + ÖRÜMCEK AĞI ---
 with tab1:
     c1, c2 = st.columns([2, 1])
     with c1:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         mode = st.radio("Mod:", ["🍄 Mantar", "⏱️ Klasik"], horizontal=True, disabled=st.session_state.is_running)
-        
         if "Mantar" in mode:
             dur = st.selectbox("Süre:", ["25 dk", "50 dk", "90 dk"], disabled=st.session_state.is_running)
             pomo_min = int(dur.split(" ")[0])
-        
         topic = st.text_input("Konu:", placeholder="Matematik, Tarih...")
         
         if not st.session_state.is_running:
@@ -310,33 +314,25 @@ with tab1:
                 else: st.warning("Konu gir.")
         else:
             elapsed = int(time.time() - st.session_state.start_time)
-            # İksir Kontrolü
             multiplier = 1.0
-            if data.get('Active_Buffs'):
-                multiplier = max([b['multiplier'] for b in data['Active_Buffs']])
+            if data['Active_Buffs']: multiplier = max([b['multiplier'] for b in data['Active_Buffs']])
             
             if "Mantar" in st.session_state.focus_mode:
                 rem = (st.session_state.pomo_duration * 60) - elapsed
                 if rem <= 0:
                     st.balloons(); st.session_state.is_running = False
-                    base_xp = st.session_state.pomo_duration * 2
-                    final_xp = int(base_xp * multiplier)
-                    
+                    final_xp = int((st.session_state.pomo_duration * 2) * multiplier)
                     data['XP'] += final_xp
                     data['History'].insert(0, {"date": str(datetime.datetime.now())[:16], "course": topic, "duration": st.session_state.pomo_duration, "xp": final_xp})
-                    
-                    # İksiri Tüket
                     data['Active_Buffs'] = []
                     sync_user_to_cloud(data)
-                    st.success(f"Bitti! +{final_xp} XP (Çarpan: x{multiplier})")
-                    st.rerun()
+                    st.success(f"Bitti! +{final_xp} XP"); st.rerun()
                 mins, secs = divmod(rem, 60); color="#ff4b4b"
             else:
                 mins, secs = divmod(elapsed, 60); color="#d4af37"
             
             st.markdown(f"<h1 style='text-align:center; font-size: 80px; color:{color};'>{mins:02d}:{secs:02d}</h1>", unsafe_allow_html=True)
-            if multiplier > 1.0: st.caption(f"⚡ İksir Aktif: x{multiplier} XP")
-            
+            if multiplier > 1.0: st.caption(f"⚡ İksir Aktif: x{multiplier}")
             if st.button("DURDUR"):
                 st.session_state.is_running = False
                 if "Klasik" in st.session_state.focus_mode:
@@ -351,53 +347,37 @@ with tab1:
                 st.rerun()
             time.sleep(1); st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
-        
     with c2:
-        # ÖRÜMCEK AĞI (YETENEK ANALİZİ)
         st.markdown("### 🕸️ Yetenek Ağı")
         fig = create_radar_chart(data['History'])
         if fig: st.plotly_chart(fig, use_container_width=True)
-        else: st.info("Veri bekleniyor...")
+        else: st.info("Grafik için veri bekleniyor...")
 
-# --- TAB 2: KAHİN (AI) ---
 with tab2:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-    st.subheader("🔮 Kahin'in Gözü")
-    st.caption("Kadim kütüphanenin koruyucusuna danış. (Örn: 'Bana Fransız İhtilali'ni özetle')")
-    
-    oracle_q = st.text_input("Sorunu sor:", key="oracle_input")
+    st.subheader("🔮 Kahin'in Gözü (AI)")
+    q = st.text_input("Sorunu sor:", key="oracle_input")
     if st.button("Danış"):
-        with st.spinner("Kahin küreye bakıyor..."):
-            resp = ask_oracle(oracle_q)
-            st.session_state.oracle_response = resp
-            
-    if st.session_state.oracle_response:
-        st.markdown(f"**🦉 Kahin:** {st.session_state.oracle_response}")
+        with st.spinner("Kahin düşünüyor..."):
+            st.session_state.oracle_response = ask_oracle(q)
+    if st.session_state.oracle_response: st.markdown(f"**🦉 Kahin:** {st.session_state.oracle_response}")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# --- TAB 3: SİMYA & DÜKKAN ---
 with tab3:
-    col_shop1, col_shop2 = st.columns(2)
-    with col_shop1:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        st.markdown("### 🧪 Odak İksiri (x1.5 XP)")
-        st.caption("Bir sonraki çalışma seansında %50 daha fazla XP kazandırır.")
-        st.markdown("**Fiyat: 200 XP**")
-        if st.button("Satın Al & İç (200 XP)"):
+    col_s1, col_s2 = st.columns(2)
+    with col_s1:
+        st.markdown('<div class="shop-item">', unsafe_allow_html=True)
+        st.markdown("### 🧪 Odak İksiri (x1.5 XP)"); st.caption("Fiyat: 200 XP")
+        if st.button("Satın Al (200 XP)"):
             if data['XP'] >= 200:
                 data['XP'] -= 200
                 data['Active_Buffs'] = [{"name": "Odak İksiri", "multiplier": 1.5}]
-                sync_user_to_cloud(data)
-                st.toast("Gluk gluk... İksir içildi! 🧪")
-                time.sleep(1); st.rerun()
+                sync_user_to_cloud(data); st.toast("Gluk gluk... 🧪"); time.sleep(1); st.rerun()
             else: st.error("Yetersiz XP")
         st.markdown('</div>', unsafe_allow_html=True)
-        
-    with col_shop2:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        st.markdown("### 🖼️ Altın Çerçeve")
-        st.caption("Profil resmini parlatır. (Kalıcı)")
-        st.markdown("**Fiyat: 500 XP**")
+    with col_s2:
+        st.markdown('<div class="shop-item">', unsafe_allow_html=True)
+        st.markdown("### 🖼️ Altın Çerçeve"); st.caption("Fiyat: 500 XP")
         if "Altın Çerçeve" in data['Inventory']: st.success("Sahipsin")
         elif st.button("Al (500 XP)"):
             if data['XP'] >= 500:
@@ -405,58 +385,32 @@ with tab3:
                 sync_user_to_cloud(data); st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-# --- TAB 4: KADER KARTLARI ---
 with tab4:
     st.markdown('<div class="glass-card" style="text-align:center;">', unsafe_allow_html=True)
     st.subheader("🃏 Günün Kader Kartı")
-    
     today = str(datetime.date.today())
-    last_oracle = data.get('Last_Oracle', "")
-    
-    if last_oracle != today:
+    if data.get('Last_Oracle', "") != today:
         if st.button("Kart Çek"):
-            cards = [
-                {"name": "Büyücü", "desc": "Yaratıcılığın zirvesindesin. (+50 XP)", "xp": 50},
-                {"name": "Ermiş", "desc": "Yalnızlık sana güç verecek. (+30 XP)", "xp": 30},
-                {"name": "Güç", "desc": "Zorlukların üstesinden geleceksin. (+100 XP)", "xp": 100},
-                {"name": "Yıldız", "desc": "Umut ışığı parlıyor. (+20 XP)", "xp": 20}
-            ]
-            drawn = random.choice(cards)
-            st.session_state.card_result = drawn
-            
-            data['XP'] += drawn['xp']
-            data['Last_Oracle'] = today
-            sync_user_to_cloud(data)
-            st.rerun()
-    else:
-        st.info("Bugün zaten kaderine baktın. Yarın gel.")
-        
-    if 'card_result' in st.session_state:
-        c = st.session_state.card_result
-        st.markdown(f"""
-        <div class="tarot-card">
-            <h2>{c['name']}</h2>
-            <p>{c['desc']}</p>
-        </div>
-        """, unsafe_allow_html=True)
+            c = random.choice([{"name":"Büyücü","desc":"(+50 XP)","xp":50}, {"name":"Ermiş","desc":"(+30 XP)","xp":30}, {"name":"Güç","desc":"(+100 XP)","xp":100}])
+            st.session_state.card = c
+            data['XP'] += c['xp']; data['Last_Oracle'] = today
+            sync_user_to_cloud(data); st.rerun()
+    else: st.info("Yarın gel.")
+    if 'card' in st.session_state:
+        st.markdown(f"<div class='tarot-card'><h2>{st.session_state.card['name']}</h2><p>{st.session_state.card['desc']}</p></div>", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# --- TAB 5: POSTA ---
 with tab5:
     with st.form("chat"):
         c1, c2 = st.columns([4,1])
-        msg = c1.text_input("Mesaj:", label_visibility="collapsed")
-        if c2.form_submit_button("Yolla"):
-            send_chat_message(username, msg); st.rerun()
-    
-    msgs = get_chat_messages()
-    for m in reversed(msgs):
-        if len(m)>=3 and m[1]!="Username":
-            col = "#d4af37" if m[1]==username else "#ccc"
-            st.markdown(f"<div class='chat-row'><b style='color:{col}'>{m[1]}</b> <i style='float:right; font-size:10px'>{m[0]}</i><br>{m[2]}</div>", unsafe_allow_html=True)
+        m = c1.text_input("Mesaj:", label_visibility="collapsed")
+        if c2.form_submit_button("Yolla") and m: send_chat_message(username, m); st.rerun()
+    for msg in reversed(get_chat_messages()):
+        if len(msg)>=3 and msg[1]!="Username":
+            col = "#d4af37" if msg[1]==username else "#ccc"
+            st.markdown(f"<div class='chat-row'><b style='color:{col}'>{msg[1]}</b> <i style='float:right;size:10px'>{msg[0]}</i><br>{msg[2]}</div>", unsafe_allow_html=True)
     if st.button("Yenile"): st.rerun()
 
-# --- TAB 6: GEÇMİŞ ---
 with tab6:
     if data['History']: st.dataframe(pd.DataFrame(data['History']), use_container_width=True)
-    else: st.info("Boş.")
+    else: st.info("Kayıt yok.")
