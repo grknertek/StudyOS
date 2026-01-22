@@ -6,66 +6,93 @@ import json
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# --- 1. GÖRSEL AYARLAR ---
-st.set_page_config(page_title="Study OS Online", page_icon="🦉", layout="wide")
+# --- 1. GÖRSEL VE ATMOSFER AYARLARI ---
+st.set_page_config(page_title="Study OS Atmosphere", page_icon="🦉", layout="wide")
 
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
     
+    /* GENEL ARKA PLAN */
     .stApp {
-        background-color: #0e0e0e;
-        background-image: radial-gradient(circle at 50% 0%, #1f1f1f 0%, #0e0e0e 70%);
+        background-color: #050505;
+        background-image: radial-gradient(circle at 50% 0%, #1f1f1f 0%, #050505 80%);
         color: #e0e0e0;
         font-family: 'Inter', sans-serif;
     }
     
-    h1, h2, h3 { font-family: 'Playfair Display', serif; color: #d4af37; letter-spacing: 0.5px; }
-    
-    .glass-card {
-        background: rgba(30, 30, 30, 0.7);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(212, 175, 55, 0.1);
-        border-radius: 16px;
-        padding: 24px;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+    /* TİPOGRAFİ */
+    h1, h2, h3, h4 {
+        font-family: 'Playfair Display', serif;
+        color: #d4af37;
+        letter-spacing: 0.5px;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.5);
     }
     
-    /* MOD SEÇİCİ */
-    .stRadio > div {
+    /* CAM KARTLAR (GLASSMORPHISM) */
+    .glass-card {
+        background: rgba(20, 20, 20, 0.6);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(212, 175, 55, 0.15);
+        border-radius: 16px;
+        padding: 30px;
+        margin-bottom: 25px;
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+    
+    /* GİRİŞ KUTULARI (INPUTS) */
+    .stTextInput input, .stSelectbox div[data-baseweb="select"] > div {
         background-color: rgba(255, 255, 255, 0.05);
-        padding: 10px;
-        border-radius: 10px;
+        color: #d4af37;
         border: 1px solid #333;
+        border-radius: 8px;
+    }
+    
+    /* BUTONLAR */
+    .stButton>button {
+        background: linear-gradient(145deg, #2b221a, #1a1510);
+        color: #d4af37;
+        border: 1px solid #d4af37;
+        font-family: 'Playfair Display', serif;
+        border-radius: 8px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    .stButton>button:hover {
+        background: #d4af37;
+        color: #000;
+        box-shadow: 0 0 15px rgba(212, 175, 55, 0.4);
     }
     
     /* LİDERLİK TABLOSU */
     .leaderboard-row {
         padding: 12px;
-        border-bottom: 1px solid #333;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background: rgba(255, 255, 255, 0.03);
-        margin-bottom: 5px;
-        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.2);
+        margin-bottom: 6px;
+        border-radius: 6px;
+        transition: transform 0.2s;
     }
-    .rank-1 { color: #FFD700; font-weight: bold; }
+    .leaderboard-row:hover {
+        transform: translateX(5px);
+        background: rgba(212, 175, 55, 0.1);
+    }
+    .rank-1 { color: #FFD700; font-weight: 900; text-shadow: 0 0 10px #FFD700; }
+    .rank-2 { color: #C0C0C0; font-weight: bold; }
+    .rank-3 { color: #CD7F32; font-weight: bold; }
     
-    /* BUTONLAR */
-    .stButton>button {
-        background: linear-gradient(145deg, #3e3226, #2b221a);
-        color: #d4af37;
-        border: 1px solid #d4af37;
-        font-family: 'Playfair Display', serif;
-        border-radius: 8px;
-    }
+    /* CHECKBOX */
+    .stCheckbox label { color: #aaa; }
     </style>
 """, unsafe_allow_html=True)
 
 # --- 2. BACKEND: GOOGLE SHEETS ---
-
 @st.cache_resource
 def get_google_sheet_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
@@ -80,7 +107,7 @@ def get_safe_sheet():
         sheet = client.open("StudyOS_DB").sheet1
         return sheet
     except Exception as e:
-        st.error(f"Bağlantı Hatası: {e}")
+        st.error(f"Sunucu Bağlantı Hatası: {e}")
         return None
 
 def fetch_all_data_now():
@@ -91,58 +118,43 @@ def fetch_all_data_now():
                 headers = ["Username", "XP", "Level", "History", "Tasks", "Cards", "Last_Login"]
                 sheet.append_row(headers)
             return sheet.get_all_records()
-        except Exception as e:
-            return []
+        except: return []
     return []
 
-# --- KRİTİK DÜZELTME: ÇİFT ÜYELİK ENGELLEME ---
+# ÇİFT ÜYELİK KORUMALI GİRİŞ
 def login_or_register(username):
     sheet = get_safe_sheet()
     if not sheet: return None
-    
-    # Tüm verileri çek
     all_records = sheet.get_all_records()
-    
-    # 1. MEVCUT KULLANICIYI ARA (Büyük/Küçük harf duyarsız)
     clean_username = username.strip().lower()
     
     for row in all_records:
         if str(row['Username']).strip().lower() == clean_username:
-            # Kullanıcı bulundu! Verilerini düzeltip döndür
-            # JSON alanlarını string'den listeye çevir
             for key in ['History', 'Tasks', 'Cards']:
                 if isinstance(row[key], str):
                     try: row[key] = json.loads(row[key])
                     except: row[key] = []
             return row
             
-    # 2. BULUNAMADIYSA YENİ KAYIT AÇ
     new_user = {
-        "Username": username.strip(), # Orijinal yazımı kullan
-        "XP": 0, "Level": 1, 
+        "Username": username.strip(), "XP": 0, "Level": 1, 
         "History": [], "Tasks": [], "Cards": [], 
         "Last_Login": str(datetime.date.today())
     }
-    
-    # Sheet'e kaydetmek için JSON string'e çeviriyoruz
     save_user = new_user.copy()
     for key in ['History', 'Tasks', 'Cards']:
         save_user[key] = json.dumps(save_user[key])
-        
     sheet.append_row(list(save_user.values()))
     return new_user
 
-# Buluta Kaydet
 def sync_user_to_cloud(user_data):
     sheet = get_safe_sheet()
     if not sheet: return
-
     try:
         cell = sheet.find(user_data['Username'])
         row_num = cell.row
-    except:
-        return # Kullanıcı bulunamazsa işlem yapma
-
+    except: return
+    
     sheet.update_cell(row_num, 2, user_data['XP'])
     sheet.update_cell(row_num, 4, json.dumps(user_data['History']))
     sheet.update_cell(row_num, 5, json.dumps(user_data['Tasks']))
@@ -159,27 +171,31 @@ def delete_user_from_cloud(username_to_delete):
         except: return False
     return False
 
-# --- 3. UYGULAMA AKIŞI ---
-
+# --- 3. GİRİŞ EKRANI ---
 if 'username' not in st.session_state:
-    st.markdown("<h1 style='text-align: center;'>🦉 Study OS Online</h1>", unsafe_allow_html=True)
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; font-size: 60px;'>🦉</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>Study OS <span style='font-size: 20px; color:#888;'>Atmosphere</span></h1>", unsafe_allow_html=True)
+    
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         with st.form("login_form"):
-            name_input = st.text_input("Kod Adın:", placeholder="Örn: Gürkan")
-            submitted = st.form_submit_button("Giriş Yap")
+            name_input = st.text_input("Kimsin sen, gezgin?", placeholder="Kod Adın...")
+            submitted = st.form_submit_button("Kapıdan Gir", use_container_width=True)
             if submitted and name_input:
-                with st.spinner("Kütüphaneye giriliyor..."):
+                with st.spinner("Parşömenler taranıyor..."):
                     user_data = login_or_register(name_input)
                     if user_data:
                         st.session_state.username = user_data['Username']
                         st.session_state.user_data = user_data
                         st.rerun()
                     else:
-                        st.error("Bağlantı hatası.")
+                        st.error("Sunucu yanıt vermiyor.")
+        st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
-# --- GİRİŞ YAPILDI ---
+# --- 4. ANA UYGULAMA ---
 username = st.session_state.username
 data = st.session_state.user_data
 
@@ -187,24 +203,36 @@ if 'start_time' not in st.session_state: st.session_state.start_time = None
 if 'is_running' not in st.session_state: st.session_state.is_running = False
 if 'focus_mode' not in st.session_state: st.session_state.focus_mode = "Pomodoro"
 
-# --- SIDEBAR ---
+# --- SIDEBAR (ATMOSFER & LİDERLİK) ---
 with st.sidebar:
     st.markdown(f"""
-    <div style="text-align:center;">
-        <div style="font-size: 50px;">🦉</div>
-        <h2>{username}</h2>
-        <h3 style="color:#d4af37;">{data['XP']} XP</h3>
+    <div style="text-align:center; padding: 10px;">
+        <div style="font-size: 60px; text-shadow: 0 0 20px #d4af37;">🦉</div>
+        <h2 style="margin:0;">{username}</h2>
+        <h3 style="color:#d4af37; border-bottom: 1px solid #444; padding-bottom:10px;">{data['XP']} XP</h3>
     </div>
     """, unsafe_allow_html=True)
+    
+    # 🎧 ATMOSFER BÖLÜMÜ
+    st.subheader("🎧 Atmosfer")
+    sound_choice = st.selectbox("Ses Manzarası Seç:", 
+                                ["Sessiz 🔇", "Yağmurlu Kütüphane 🌧️", "Şömine Ateşi 🔥", "Lofi Study ☕", "Brown Noise (Odak) 🧠"])
+    
+    if "Yağmurlu" in sound_choice:
+        st.video("https://www.youtube.com/watch?v=mPZkdNFkNps")
+    elif "Şömine" in sound_choice:
+        st.video("https://www.youtube.com/watch?v=K0pJRo0XU8s")
+    elif "Lofi" in sound_choice:
+        st.video("https://www.youtube.com/watch?v=jfKfPfyJRdk")
+    elif "Brown" in sound_choice:
+        st.video("https://www.youtube.com/watch?v=RqzGzwTY-6w")
     
     st.markdown("---")
     
     if st.button("🔄 Liderlik Tablosunu Yenile", use_container_width=True):
         st.session_state.all_records_view = fetch_all_data_now()
     
-    st.subheader("🏆 Liderlik Tablosu")
-    
-    # Liderlik tablosu verisi (Cache veya taze)
+    st.subheader("🏆 Liderler")
     if 'all_records_view' not in st.session_state:
         st.session_state.all_records_view = fetch_all_data_now()
         
@@ -222,7 +250,7 @@ with st.sidebar:
             st.markdown(f"""
             <div class="leaderboard-row">
                 <span class="{style_cls}">{medal} {u['Username']}</span>
-                <span style="color:#d4af37;">{u['XP']} XP</span>
+                <span style="color:#d4af37;">{u['XP']}</span>
             </div>""", unsafe_allow_html=True)
         
         with col_del:
@@ -233,27 +261,24 @@ with st.sidebar:
                     time.sleep(1)
                     st.rerun()
 
-# --- ANA EKRAN ---
+# --- ANA SEKME ---
 st.title("Study OS")
-st.caption(f"Kişisel çalışma alanın, {username}. Buradaki her şey sadece sana özel.")
+st.caption("“Zihnin neredeyse, gücün oradadır.”")
 
-tab1, tab2, tab3 = st.tabs(["🔥 Odaklan", "✅ Özel Ajanda", "📊 Geçmiş"])
+tab1, tab2, tab3 = st.tabs(["🔥 Odaklan", "📜 Ajanda", "🕰️ Geçmiş"])
 
-# --- TAB 1: HİBRİT ODAKLANMA (GERİ GELDİ!) ---
+# --- TAB 1: ODAKLAN ---
 with tab1:
     col_main, col_stat = st.columns([2, 1])
     
     with col_main:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         
-        # 1. MOD SEÇİMİ
-        mode = st.radio("Çalışma Modu:", ["🍅 Pomodoro (25 dk)", "⏱️ Klasik (Kronometre)"], horizontal=True, disabled=st.session_state.is_running)
-        
-        # 2. KONU GİRİŞİ
-        study_topic = st.text_input("Bugün ne çalışıyorsun?", placeholder="Örn: Fizik, Roman Okuma...")
+        mode = st.radio("Mod:", ["🍅 Pomodoro (25 dk)", "⏱️ Klasik (Kronometre)"], horizontal=True, disabled=st.session_state.is_running)
+        study_topic = st.text_input("Çalışma Konusu:", placeholder="Örn: Edebiyat, Matematik...")
         
         if not st.session_state.is_running:
-            btn_text = "🔥 POMODORO BAŞLAT" if "Pomodoro" in mode else "⏱️ KRONOMETRE BAŞLAT"
+            btn_text = "BAŞLAT"
             if st.button(btn_text, use_container_width=True):
                 if study_topic:
                     st.session_state.is_running = True
@@ -263,91 +288,74 @@ with tab1:
                 else:
                     st.warning("Lütfen bir konu yaz!")
         else:
-            # ÇALIŞMA ANI
             elapsed = int(time.time() - st.session_state.start_time)
             
             if "Pomodoro" in st.session_state.focus_mode:
-                # GERİ SAYIM
-                target = 25 * 60
-                remaining = target - elapsed
-                
+                remaining = (25 * 60) - elapsed
                 if remaining <= 0:
                     st.balloons()
                     st.session_state.is_running = False
-                    
                     xp_gain = 50
                     data['XP'] += xp_gain
                     new_hist = {"date": str(datetime.datetime.now())[:16], "course": study_topic, "duration": 25, "xp": xp_gain}
                     data['History'].insert(0, new_hist)
                     sync_user_to_cloud(data)
-                    
                     st.success(f"Pomodoro Bitti! +50 XP")
                     st.rerun()
-                
                 mins, secs = divmod(remaining, 60)
                 color = "#ff4b4b"
             else:
-                # İLERİ SAYIM (KLASİK)
                 mins, secs = divmod(elapsed, 60)
                 color = "#d4af37"
             
-            st.markdown(f"<h1 style='text-align:center; font-size: 80px; color:{color}; text-shadow: 0 0 20px {color};'>{mins:02d}:{secs:02d}</h1>", unsafe_allow_html=True)
+            st.markdown(f"<h1 style='text-align:center; font-size: 80px; color:{color}; text-shadow: 0 0 30px {color};'>{mins:02d}:{secs:02d}</h1>", unsafe_allow_html=True)
             st.caption(f"Konu: {study_topic}")
             
-            # DURDURMA BUTONU
-            if st.button("🛑 OTURUMU BİTİR / DURDUR", use_container_width=True):
+            if st.button("🛑 DURDUR & KAYDET", use_container_width=True):
                 st.session_state.is_running = False
-                
-                # Klasik modda manuel bitirilirse kaydet
                 if "Klasik" in st.session_state.focus_mode:
                     duration_mins = elapsed // 60
                     if duration_mins >= 1:
-                        xp_gain = duration_mins * 2 # Dakika başı 2 XP
+                        xp_gain = duration_mins * 2
                         data['XP'] += xp_gain
                         new_hist = {"date": str(datetime.datetime.now())[:16], "course": study_topic, "duration": duration_mins, "xp": xp_gain}
                         data['History'].insert(0, new_hist)
                         sync_user_to_cloud(data)
-                        st.success(f"Kayıt Başarılı: {duration_mins} dk | +{xp_gain} XP")
-                    else:
-                        st.warning("1 dakikadan kısa sürdü, kaydedilmedi.")
-                
+                        st.success(f"Kaydedildi: {duration_mins} dk | +{xp_gain} XP")
+                    else: st.warning("1 dakikadan kısa, XP yok.")
                 st.rerun()
-            
             time.sleep(1)
             st.rerun()
-            
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_stat:
         st.markdown(f"""
         <div class="glass-card">
-            <h4 style="color:#888; margin:0;">Toplam XP</h4>
-            <h2 style="margin:0; color:#FFD700;">{data['XP']}</h2>
+            <h4 style="color:#888; margin:0;">Seviye</h4>
+            <h2 style="margin:0; color:#FFD700;">{int(data['XP']/500) + 1}</h2>
+            <p style="font-size:12px; color:#666;">Sonraki seviyeye: {500 - (data['XP'] % 500)} XP</p>
         </div>
         """, unsafe_allow_html=True)
 
-# --- TAB 2: ÖZEL AJANDA (GİZLİ BÖLÜM) ---
+# --- TAB 2: AJANDA ---
 with tab2:
-    st.info(f"🔒 **Gizli Ajanda:** Buraya yazdıklarını sadece sen ({username}) görebilirsin.")
-    
     col_add, col_list = st.columns([1, 2])
-    
     with col_add:
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         with st.form("add_task"):
-            new_task = st.text_input("Görev Ekle:")
-            if st.form_submit_button("Listeye Ekle") and new_task:
+            new_task = st.text_input("Yeni Görev:")
+            if st.form_submit_button("Listeye Ekle", use_container_width=True) and new_task:
                 data['Tasks'].append({"task": new_task, "done": False})
                 sync_user_to_cloud(data)
                 st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
     
     with col_list:
         if data['Tasks']:
             for i, t in enumerate(data['Tasks']):
-                # Her görev için bir kutu
                 with st.container():
                     c1, c2 = st.columns([5, 1])
-                    with c1:
-                        st.markdown(f"⬜ **{t['task']}**")
+                    with c1: st.markdown(f"📜 **{t['task']}**")
                     with c2:
                         if st.button("✅", key=f"done_{i}"):
                             data['XP'] += 20
@@ -356,13 +364,13 @@ with tab2:
                             st.toast("Görev tamamlandı! +20 XP")
                             time.sleep(1)
                             st.rerun()
-                    st.markdown("---")
+                    st.markdown("<hr style='border-top: 1px dashed #333;'>", unsafe_allow_html=True)
         else:
-            st.caption("Yapılacak görev yok.")
+            st.info("Ajandan boş. Özgürsün!")
 
 # --- TAB 3: GEÇMİŞ ---
 with tab3:
     if data['History']:
         st.dataframe(pd.DataFrame(data['History']), use_container_width=True)
     else:
-        st.info("Henüz bir çalışma kaydı yok.")
+        st.info("Henüz kayıt yok.")
