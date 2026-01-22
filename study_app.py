@@ -23,9 +23,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. GOOGLE SHEETS BAĞLANTISI (CACHE İLE KORUMALI) ---
+# --- 2. GOOGLE SHEETS BAĞLANTISI (AKILLI BEKLEME MODÜLÜ) ---
 
-# Bağlantıyı önbelleğe alıyoruz ki her seferinde Google'a sormasın
+# Bağlantı nesnesini hafızada tut
 @st.cache_resource
 def get_google_sheet_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
@@ -34,24 +34,38 @@ def get_google_sheet_client():
     client = gspread.authorize(creds)
     return client
 
-# Veriyi çekerken hata olursa uygulamayı çökertme, uyar
-def get_all_data():
-    try:
-        client = get_google_sheet_client()
-        sheet = client.open("StudyOS_DB").sheet1
-        data = sheet.get_all_records()
-        return data, sheet
-    except Exception as e:
-        return [], None
+# Sayfayı (Worksheet) güvenli bir şekilde al, hata verirse tekrar dene
+def get_safe_sheet():
+    max_retries = 3
+    for i in range(max_retries):
+        try:
+            client = get_google_sheet_client()
+            sheet = client.open("StudyOS_DB").sheet1
+            return sheet
+        except Exception as e:
+            if i < max_retries - 1:
+                time.sleep(2) # 2 saniye bekle ve tekrar dene
+                continue
+            else:
+                st.error(f"Google Bağlantı Hatası: {e}")
+                return None
 
-def get_user_data(username, sheet, all_records):
-    # Eğer sheet bağlantısı kopuksa işlem yapma
-    if sheet is None:
-        return None
+# Veriyi 10 saniye boyunca hafızada tut (Kotayı rahatlatır)
+@st.cache_data(ttl=10)
+def get_cached_records():
+    sheet = get_safe_sheet()
+    if sheet:
+        return sheet.get_all_records()
+    return []
 
+# Kullanıcı verisini bul veya oluştur
+def get_user_data(username):
+    all_records = get_cached_records() # Ön bellekteki veriyi kullan
+    
     # Kullanıcıyı bul
     for row in all_records:
         if row['Username'] == username:
+            # Veri tiplerini onar
             try: row['History'] = json.loads(row['History'])
             except: row['History'] = []
             try: row['Tasks'] = json.loads(row['Tasks'])
@@ -60,34 +74,50 @@ def get_user_data(username, sheet, all_records):
             except: row['Cards'] = []
             return row
             
-    # Kullanıcı yoksa oluştur
-    new_user = {
-        "Username": username, "XP": 0, "Level": 1, 
-        "History": "[]", "Tasks": "[]", "Cards": "[]", 
-        "Last_Login": str(datetime.date.today())
-    }
-    sheet.append_row(list(new_user.values()))
-    
-    new_user['History'] = []
-    new_user['Tasks'] = []
-    new_user['Cards'] = []
-    return new_user
+    # Kullanıcı yoksa oluştur (Burası yazma işlemi olduğu için cache kullanamaz)
+    sheet = get_safe_sheet()
+    if sheet:
+        new_user = {
+            "Username": username, "XP": 0, "Level": 1, 
+            "History": "[]", "Tasks": "[]", "Cards": "[]", 
+            "Last_Login": str(datetime.date.today())
+        }
+        try:
+            sheet.append_row(list(new_user.values()))
+            # Cache'i temizle ki yeni kullanıcı listede görünsün
+            get_cached_records.clear()
+        except:
+            st.warning("Yeni kullanıcı oluşturulurken bağlantı koptu. Tekrar deneyin.")
+            return None
+            
+        new_user['History'] = []
+        new_user['Tasks'] = []
+        new_user['Cards'] = []
+        return new_user
+    return None
 
-def update_user_data(sheet, user_data):
+def update_user_data(user_data):
+    sheet = get_safe_sheet()
     if sheet is None:
-        st.error("Bağlantı hatası! Veriler kaydedilemedi.")
+        st.error("Kaydedilemedi: Bağlantı yok.")
         return
 
     try:
         cell = sheet.find(user_data['Username'])
         row_num = cell.row
+        
+        # Güncelleme işlemleri
         sheet.update_cell(row_num, 2, user_data['XP'])
         sheet.update_cell(row_num, 4, json.dumps(user_data['History']))
         sheet.update_cell(row_num, 5, json.dumps(user_data['Tasks']))
         sheet.update_cell(row_num, 6, json.dumps(user_data['Cards']))
         sheet.update_cell(row_num, 7, str(datetime.date.today()))
+        
+        # Cache'i temizle ki liderlik tablosu güncellensin
+        get_cached_records.clear()
+        
     except Exception as e:
-        st.warning(f"Kaydetme sırasında ufak bir takılma oldu: {e}")
+        st.warning(f"Kaydetme sırasında hata: {e}. (Merak etme, puanın yerelde duruyor, tekrar dene)")
 
 # --- 3. UYGULAMA MANTIĞI ---
 
@@ -103,17 +133,13 @@ if 'username' not in st.session_state:
 
 # --- GİRİŞ YAPILDIKTAN SONRA ---
 username = st.session_state.username
-all_records, sheet = get_all_data()
-
-# KRİTİK HATA KONTROLÜ (Sheet None ise dur)
-if sheet is None:
-    st.error("⚠️ Veritabanına bağlanılamadı. Google API kotası dolmuş olabilir. Lütfen 1 dakika bekleyip sayfayı yenileyin.")
-    st.stop()
 
 if 'data' not in st.session_state:
-    user_data = get_user_data(username, sheet, all_records)
+    with st.spinner("Sunucuya bağlanılıyor..."): # Yükleniyor animasyonu
+        user_data = get_user_data(username)
+    
     if user_data is None:
-        st.error("Kullanıcı verisi oluşturulamadı. Lütfen sayfayı yenileyin.")
+        st.error("Veriler yüklenemedi. Lütfen sayfayı yenileyin.")
         st.stop()
     st.session_state.data = user_data
     
@@ -130,24 +156,29 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🏆 Liderlik Tablosu")
     
-    sorted_users = sorted(all_records, key=lambda x: x['XP'], reverse=True)
-    
-    for rank, u in enumerate(sorted_users, 1):
-        medal = ""
-        if rank == 1: style = "leaderboard-rank-1"; medal="🥇"
-        elif rank == 2: style = "leaderboard-rank-2"; medal="🥈"
-        elif rank == 3: style = "leaderboard-rank-3"; medal="🥉"
-        else: style = ""; medal = f"#{rank}"
+    # Liderlik tablosunu önbellekten çek
+    all_records = get_cached_records()
+    if all_records:
+        sorted_users = sorted(all_records, key=lambda x: x['XP'], reverse=True)
         
-        st.markdown(f"""
-        <div class="leaderboard-row">
-            <span class="{style}">{medal} {u['Username']}</span>
-            <span style="color:#d4af37;">{u['XP']} XP</span>
-        </div>
-        """, unsafe_allow_html=True)
+        for rank, u in enumerate(sorted_users, 1):
+            medal = ""
+            if rank == 1: style = "leaderboard-rank-1"; medal="🥇"
+            elif rank == 2: style = "leaderboard-rank-2"; medal="🥈"
+            elif rank == 3: style = "leaderboard-rank-3"; medal="🥉"
+            else: style = ""; medal = f"#{rank}"
+            
+            st.markdown(f"""
+            <div class="leaderboard-row">
+                <span class="{style}">{medal} {u['Username']}</span>
+                <span style="color:#d4af37;">{u['XP']} XP</span>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.caption("Sıralama yükleniyor...")
     
     if st.button("🔄 Yenile"):
-        st.cache_resource.clear()
+        get_cached_records.clear()
         st.rerun()
 
 # --- ANA EKRAN ---
@@ -177,7 +208,10 @@ with tab1:
                 data['XP'] += 50
                 new_hist = {"date": str(datetime.datetime.now()), "course": "Online Çalışma", "duration": 25, "xp": 50}
                 data['History'].insert(0, new_hist)
-                update_user_data(sheet, data)
+                
+                # Kaydetme işlemi (Hata olursa uyarır ama çökmez)
+                update_user_data(data)
+                
                 st.success("Oturum Bitti! +50 XP (Buluta Kaydedildi)")
                 st.rerun()
             
